@@ -30,6 +30,7 @@ def save_data(data):
 
 # --- UI COMPONENTS ---
 class SystemStatus(Static):
+    date_str = reactive("")
     time_str = reactive("")
     weather_str = reactive("--")
 
@@ -40,7 +41,9 @@ class SystemStatus(Static):
         self.set_interval(300, self.fetch_weather)
 
     def update_time(self) -> None:
-        self.time_str = datetime.now().strftime("%H:%M:%S")
+        now = datetime.now()
+        self.date_str = now.strftime("%Y-%m-%d")
+        self.time_str = now.strftime("%H:%M:%S")
         self.render_status()
 
     @work(thread=True)
@@ -61,39 +64,7 @@ class SystemStatus(Static):
         self.app.call_from_thread(self.render_status)
 
     def render_status(self) -> None:
-        content = f"[bold cyan]TIME:[/bold cyan] {self.time_str}  |  [bold yellow]TEMP:[/bold yellow] {self.weather_str}°C [white](Quilicura)[/white]"
-        self.update(content)
-
-class DashboardPanel(Static):
-    def on_mount(self) -> None:
-        self.update_dashboard()
-
-    def update_dashboard(self) -> None:
-        app_data = getattr(self.app, "data", None)
-        if not app_data: 
-            return
-            
-        total_tasks = 0
-        completed = 0
-        high_prio = 0
-        
-        for tasks in app_data.get("projects", {}).values():
-            for t in tasks:
-                total_tasks += 1
-                if t.get("status") == "DONE": completed += 1
-                if "HIGH" in t.get("priority", ""): high_prio += 1
-                
-                # Count sub-tasks in dashboard metrics too
-                for sub in t.get("sub_tasks", []):
-                    total_tasks += 1
-                    if sub.get("status") == "DONE": completed += 1
-                
-        content = (
-            f"[bold cyan]TASKS_MANAGER[/bold cyan] v2.0\n\n"
-            f"[bold white]Total Items:[/bold white] {total_tasks}  |  "
-            f"[bold green]Completed:[/bold green] {completed}  |  "
-            f"[bold red]High Priority:[/bold red] {high_prio}"
-        )
+        content = f"[bold white]DATE:[/bold white] {self.date_str}  |  [bold cyan]TIME:[/bold cyan] {self.time_str}  |  [bold yellow]TEMP:[/bold yellow] {self.weather_str}°C [white](Quilicura)[/white]"
         self.update(content)
 
 
@@ -156,7 +127,7 @@ class TaskFormScreen(ModalScreen[dict]):
             yield Label("Priority:")
             sel_prio = Select(prio_options, id="select-priority", value=self.task_data.get("priority", "2. MEDIUM"))
             if self.is_subtask:
-                sel_prio.disabled = True  # Subtasks inherit priority context visually
+                sel_prio.disabled = True
             yield sel_prio
             
             yield Label("Status:")
@@ -258,15 +229,13 @@ class ProjectManagerScreen(ModalScreen[dict]):
         self.projects = projects
 
     def compose(self) -> ComposeResult:
-        # Using universal Hex codes ensures consistent rendering across OS/terminals.
-        # Styling the first tuple element colors the text right inside the dropdown!
         color_palette = {
             "CYAN": "#00FFFF",
             "MAGENTA": "#FF00FF",
             "GREEN": "#00FF00",
             "YELLOW": "#FFFF00",
-            "RED": "#FF4444",   # A slightly brighter red for dark terminal readability
-            "BLUE": "#3399FF",  # Dodger blue (pure #0000FF is often too dark)
+            "RED": "#FF4444",
+            "BLUE": "#3399FF",
             "WHITE": "#FFFFFF",
             "ORANGE": "#FFA500",
             "VIOLET": "#EE82EE"
@@ -331,9 +300,10 @@ class ProjectManagerScreen(ModalScreen[dict]):
 class TaskManagerApp(App):
     CSS = """
     Screen { background: $surface; }
-    #top-bar { height: 7; margin-bottom: 1; }
-    DashboardPanel { width: 60%; height: 100%; border: round #00ff00; border-title-color: #00ff00; content-align: center middle; }
-    SystemStatus { width: 40%; height: 100%; border: round #00ff00; border-title-color: #00ff00; content-align: center middle; }
+    
+    /* Reduced height and adapted for a single 100% width panel */
+    #top-bar { height: 3; margin-bottom: 1; }
+    SystemStatus { width: 100%; height: 100%; border: round #00ff00; border-title-color: #00ff00; content-align: center middle; }
     DataTable { border: round #00ff00; height: 1fr; }
     
     /* Modals */
@@ -367,7 +337,7 @@ class TaskManagerApp(App):
     def on_mount(self) -> None:
         self.title = "TASKS_MANAGER"
         self.data = load_data()
-        self.expanded_rows = set()  # Track which parent tasks are expanded
+        self.expanded_rows = set()
         
         if "theme" in self.data.get("view_settings", {}):
             self.theme = self.data["view_settings"]["theme"]
@@ -381,10 +351,6 @@ class TaskManagerApp(App):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="top-bar"):
-            dashboard = DashboardPanel()
-            dashboard.border_title = "DASHBOARD"
-            yield dashboard
-            
             status = SystemStatus()
             status.border_title = "SYS_STATUS"
             yield status
@@ -395,7 +361,6 @@ class TaskManagerApp(App):
     def populate_table(self) -> None:
         table = self.query_one(DataTable)
         
-        # Save cursor position before repopulating
         cursor_key = None
         if table.row_count > 0:
             try:
@@ -403,10 +368,8 @@ class TaskManagerApp(App):
             except Exception:
                 pass
 
-        # FIX: Clear only the rows, keeping column width calculations intact
         table.clear(columns=False)
         
-        # Add columns only on the very first boot when they don't exist yet
         if not table.columns:
             table.add_columns("PROJECT", "PRIORITY", "TASK", "STATUS", "NOTES")
         
@@ -446,7 +409,6 @@ class TaskManagerApp(App):
             row_key = f"{proj}::{idx}"
             sub_tasks = t.get("sub_tasks", [])
             
-            # Sub-task indicator logic
             if sub_tasks:
                 indicator = "[bold cyan]▼[/] " if row_key in self.expanded_rows else "[bold white]▶[/] "
             else:
@@ -454,7 +416,6 @@ class TaskManagerApp(App):
                 
             table.add_row(proj_str, prio_str, f"{indicator}{t['task']}", stat_str, t.get("notes", ""), key=row_key)
             
-            # If the row is expanded, populate its sub-tasks directly underneath it
             if row_key in self.expanded_rows:
                 for sub_idx, sub in enumerate(sub_tasks):
                     sub_key = f"{row_key}::sub::{sub_idx}"
@@ -465,28 +426,18 @@ class TaskManagerApp(App):
                     elif "ON HOLD" in sub_stat: sub_stat_str = f"[bold red]{sub_stat}[/]"
                     else: sub_stat_str = f"[white]{sub_stat}[/]"
                     
-                    # Empty strings for project/priority to create a visual indentation effect
                     table.add_row("", "", f"    [gray]↳[/] {sub['task']}", sub_stat_str, sub.get("notes", ""), key=sub_key)
 
-        # Attempt to restore cursor seamlessly
         if cursor_key:
             try:
                 row_idx = table.get_row_index(cursor_key)
                 table.move_cursor(row=row_idx)
             except Exception:
                 pass
-            
-        try:
-            self.query_one(DashboardPanel).update_dashboard()
-        except Exception:
-            pass
 
     @on(DataTable.RowSelected)
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Fires when the user presses Enter on a row."""
         row_key = str(event.row_key.value)
-        
-        # Don't try to expand a sub-task itself
         if "::sub::" in row_key:
             return
             
@@ -508,9 +459,9 @@ class TaskManagerApp(App):
             
         parts = str(row_key_value).split("::")
         if len(parts) == 2:
-            return parts[0], int(parts[1]), None # Project, Index, No Sub-Index
+            return parts[0], int(parts[1]), None 
         elif len(parts) == 4 and parts[2] == "sub":
-            return parts[0], int(parts[1]), int(parts[3]) # Project, Index, Sub-Index
+            return parts[0], int(parts[1]), int(parts[3])
             
         return None
 
@@ -623,12 +574,10 @@ class TaskManagerApp(App):
                 self.notify("SUB-TASK OVERRIDE SUCCESSFUL.", severity="information")
             else:
                 self.data["projects"][proj][idx]["sub_tasks"].append(result)
-                # Automatically expand the parent so the user can see their new subtask
                 self.expanded_rows.add(f"{proj}::{idx}")
                 self.notify("SUB-TASK UPLOADED.", severity="information")
         else:
             if idx is not None:
-                # Protect existing subtasks during an edit
                 existing_subs = self.data["projects"][proj][idx].get("sub_tasks", [])
                 result["sub_tasks"] = existing_subs
                 self.data["projects"][proj][idx] = result
