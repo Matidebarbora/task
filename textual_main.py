@@ -4,7 +4,7 @@ import ssl
 import urllib.request
 from datetime import datetime
 
-from textual import work
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
@@ -49,7 +49,6 @@ class SystemStatus(Static):
             url = "https://api.open-meteo.com/v1/forecast?latitude=-33.3667&longitude=-70.7333&current_weather=true"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             
-            # Bypass strict SSL validation which often causes urllib to fail silently
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
@@ -70,7 +69,6 @@ class DashboardPanel(Static):
         self.update_dashboard()
 
     def update_dashboard(self) -> None:
-        # Use getattr to safely fetch 'data' and bypass Pylance's strict type checking
         app_data = getattr(self.app, "data", None)
         if not app_data: 
             return
@@ -80,14 +78,19 @@ class DashboardPanel(Static):
         high_prio = 0
         
         for tasks in app_data.get("projects", {}).values():
-            total_tasks += len(tasks)
             for t in tasks:
+                total_tasks += 1
                 if t.get("status") == "DONE": completed += 1
                 if "HIGH" in t.get("priority", ""): high_prio += 1
                 
+                # Count sub-tasks in dashboard metrics too
+                for sub in t.get("sub_tasks", []):
+                    total_tasks += 1
+                    if sub.get("status") == "DONE": completed += 1
+                
         content = (
-            f"[bold cyan]TASKS_MANAGER[/bold cyan] v1.1\n\n"
-            f"[bold white]Total Tasks:[/bold white] {total_tasks}  |  "
+            f"[bold cyan]TASKS_MANAGER[/bold cyan] v2.0\n\n"
+            f"[bold white]Total Items:[/bold white] {total_tasks}  |  "
             f"[bold green]Completed:[/bold green] {completed}  |  "
             f"[bold red]High Priority:[/bold red] {high_prio}"
         )
@@ -113,35 +116,48 @@ class ConfirmScreen(ModalScreen[bool]):
 
 
 class TaskFormScreen(ModalScreen[dict]):
-    """Handles both Adding and Editing tasks."""
-    def __init__(self, projects: list, edit_proj=None, edit_idx=None, task_data=None) -> None:
+    """Handles Adding and Editing both Main Tasks and Sub-tasks."""
+    
+    def __init__(self, projects: list, edit_proj: str | None = None, edit_idx: int | None = None, edit_sub_idx: int | None = None, task_data: dict | None = None, is_subtask: bool = False, parent_proj: str | None = None) -> None:
         super().__init__()
         self.projects = projects
         self.edit_proj = edit_proj
         self.edit_idx = edit_idx
+        self.edit_sub_idx = edit_sub_idx
         self.task_data = task_data or {}
+        self.is_subtask = is_subtask
+        self.parent_proj = parent_proj
 
     def compose(self) -> ComposeResult:
         proj_options = [(p, p) for p in self.projects]
         prio_options = [("1. HIGH", "1. HIGH"), ("2. MEDIUM", "2. MEDIUM"), ("3. LOW", "3. LOW"), ("4. ----", "4. ----")]
         stat_options = [("TO DO", "TO DO"), ("IN PROGRESS", "IN PROGRESS"), ("ON HOLD", "ON HOLD"), ("DONE", "DONE")]
         
-        is_edit = self.edit_proj is not None
-        title = "[bold yellow]EDITING TASK OVERRIDE[/]" if is_edit else "[bold green]INITIALIZING NEW TASK SEQUENCE...[/]"
+        is_edit = self.edit_idx is not None
+        if self.is_subtask:
+            title = "[bold yellow]EDITING SUB-TASK[/]" if self.edit_sub_idx is not None else "[bold cyan]INITIALIZING SUB-TASK...[/]"
+        else:
+            title = "[bold yellow]EDITING TASK OVERRIDE[/]" if is_edit else "[bold green]INITIALIZING NEW TASK SEQUENCE...[/]"
         
         with Vertical(id="dialog"):
             yield Label(title, id="dialog-title")
             
             yield Label("Project Designation:")
-            sel_proj = Select(proj_options, id="select-project", value=self.edit_proj if is_edit else Select.BLANK)
-            sel_proj.disabled = is_edit # Don't allow changing project during edit for simplicity
+            sel_proj = Select(proj_options, id="select-project", prompt="Select Project...")
+            
+            if self.edit_proj is not None or self.is_subtask:
+                sel_proj.value = self.edit_proj or self.parent_proj  # type: ignore
+                sel_proj.disabled = True
             yield sel_proj
             
             yield Label("Task Description:")
             yield Input(value=self.task_data.get("task", ""), placeholder="Enter task...", id="input-desc")
             
             yield Label("Priority:")
-            yield Select(prio_options, id="select-priority", value=self.task_data.get("priority", "2. MEDIUM"))
+            sel_prio = Select(prio_options, id="select-priority", value=self.task_data.get("priority", "2. MEDIUM"))
+            if self.is_subtask:
+                sel_prio.disabled = True  # Subtasks inherit priority context visually
+            yield sel_prio
             
             yield Label("Status:")
             yield Select(stat_options, id="select-status", value=self.task_data.get("status", "TO DO"))
@@ -150,7 +166,7 @@ class TaskFormScreen(ModalScreen[dict]):
             yield Input(value=self.task_data.get("notes", ""), placeholder="Enter notes...", id="input-notes")
             
             with Horizontal(id="dialog-buttons"):
-                yield Button("SAVE TASK", variant="success", id="btn-submit")
+                yield Button("SAVE DATA", variant="success", id="btn-submit")
                 yield Button("CANCEL", variant="error", id="btn-cancel")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -174,7 +190,9 @@ class TaskFormScreen(ModalScreen[dict]):
                 "priority": priority,
                 "status": status,
                 "notes": notes.strip() if notes.strip() else None,
-                "edit_idx": self.edit_idx
+                "edit_idx": self.edit_idx,
+                "edit_sub_idx": self.edit_sub_idx,
+                "is_subtask": self.is_subtask
             }
             self.dismiss(result)
         elif event.button.id == "btn-cancel":
@@ -240,7 +258,21 @@ class ProjectManagerScreen(ModalScreen[dict]):
         self.projects = projects
 
     def compose(self) -> ComposeResult:
-        color_opts = [(c.upper(), c) for c in ["cyan", "magenta", "green", "yellow", "red", "blue", "white", "orange", "violet"]]
+        # Using universal Hex codes ensures consistent rendering across OS/terminals.
+        # Styling the first tuple element colors the text right inside the dropdown!
+        color_palette = {
+            "CYAN": "#00FFFF",
+            "MAGENTA": "#FF00FF",
+            "GREEN": "#00FF00",
+            "YELLOW": "#FFFF00",
+            "RED": "#FF4444",   # A slightly brighter red for dark terminal readability
+            "BLUE": "#3399FF",  # Dodger blue (pure #0000FF is often too dark)
+            "WHITE": "#FFFFFF",
+            "ORANGE": "#FFA500",
+            "VIOLET": "#EE82EE"
+        }
+        
+        color_opts = [(f"[{hex_code} bold]{name}[/]", hex_code) for name, hex_code in color_palette.items()]
         proj_opts = [(p, p) for p in self.projects]
         
         with VerticalScroll(id="dialog"):
@@ -325,6 +357,7 @@ class TaskManagerApp(App):
     BINDINGS = [
         ("1", "manage_projects", "Projects"),
         ("2", "add_task", "Add Task"),
+        ("s", "add_subtask", "Add Sub-task"),
         ("e", "edit_task", "Edit Task"),
         ("d", "delete_task", "Delete Task"),
         ("v", "view_filter", "View/Filter"),
@@ -334,15 +367,14 @@ class TaskManagerApp(App):
     def on_mount(self) -> None:
         self.title = "TASKS_MANAGER"
         self.data = load_data()
+        self.expanded_rows = set()  # Track which parent tasks are expanded
         
-        # Load saved theme on boot
         if "theme" in self.data.get("view_settings", {}):
             self.theme = self.data["view_settings"]["theme"]
             
         self.populate_table()
 
     def watch_theme(self, new_theme: str) -> None:
-        """Automatically saves palette/theme modifications persistently."""
         if hasattr(self, "data") and "view_settings" in self.data:
             self.data["view_settings"]["theme"] = new_theme
             save_data(self.data)
@@ -362,8 +394,21 @@ class TaskManagerApp(App):
 
     def populate_table(self) -> None:
         table = self.query_one(DataTable)
-        table.clear(columns=True)
-        table.add_columns("PROJECT", "PRIORITY", "TASK", "STATUS", "NOTES")
+        
+        # Save cursor position before repopulating
+        cursor_key = None
+        if table.row_count > 0:
+            try:
+                cursor_key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+            except Exception:
+                pass
+
+        # FIX: Clear only the rows, keeping column width calculations intact
+        table.clear(columns=False)
+        
+        # Add columns only on the very first boot when they don't exist yet
+        if not table.columns:
+            table.add_columns("PROJECT", "PRIORITY", "TASK", "STATUS", "NOTES")
         
         view = self.data["view_settings"]
         all_tasks = []
@@ -399,13 +444,58 @@ class TaskManagerApp(App):
             else: stat_str = f"[white]{stat}[/]"
 
             row_key = f"{proj}::{idx}"
-            table.add_row(proj_str, prio_str, t["task"], stat_str, t.get("notes", ""), key=row_key)
+            sub_tasks = t.get("sub_tasks", [])
             
-        # Keep Dashboard in sync
+            # Sub-task indicator logic
+            if sub_tasks:
+                indicator = "[bold cyan]▼[/] " if row_key in self.expanded_rows else "[bold white]▶[/] "
+            else:
+                indicator = "  "
+                
+            table.add_row(proj_str, prio_str, f"{indicator}{t['task']}", stat_str, t.get("notes", ""), key=row_key)
+            
+            # If the row is expanded, populate its sub-tasks directly underneath it
+            if row_key in self.expanded_rows:
+                for sub_idx, sub in enumerate(sub_tasks):
+                    sub_key = f"{row_key}::sub::{sub_idx}"
+                    sub_stat = sub.get("status", "TO DO")
+                    
+                    if "DONE" in sub_stat: sub_stat_str = f"[bold green]{sub_stat}[/]"
+                    elif "IN PROGRESS" in sub_stat: sub_stat_str = f"[bold cyan]{sub_stat}[/]"
+                    elif "ON HOLD" in sub_stat: sub_stat_str = f"[bold red]{sub_stat}[/]"
+                    else: sub_stat_str = f"[white]{sub_stat}[/]"
+                    
+                    # Empty strings for project/priority to create a visual indentation effect
+                    table.add_row("", "", f"    [gray]↳[/] {sub['task']}", sub_stat_str, sub.get("notes", ""), key=sub_key)
+
+        # Attempt to restore cursor seamlessly
+        if cursor_key:
+            try:
+                row_idx = table.get_row_index(cursor_key)
+                table.move_cursor(row=row_idx)
+            except Exception:
+                pass
+            
         try:
             self.query_one(DashboardPanel).update_dashboard()
         except Exception:
             pass
+
+    @on(DataTable.RowSelected)
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Fires when the user presses Enter on a row."""
+        row_key = str(event.row_key.value)
+        
+        # Don't try to expand a sub-task itself
+        if "::sub::" in row_key:
+            return
+            
+        if row_key in self.expanded_rows:
+            self.expanded_rows.remove(row_key)
+        else:
+            self.expanded_rows.add(row_key)
+            
+        self.populate_table()
 
     def get_selected_task(self):
         table = self.query_one(DataTable)
@@ -413,12 +503,16 @@ class TaskManagerApp(App):
             return None
             
         row_key_value = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
-        
         if not row_key_value:
             return None
             
-        proj, idx = str(row_key_value).split("::")
-        return proj, int(idx)
+        parts = str(row_key_value).split("::")
+        if len(parts) == 2:
+            return parts[0], int(parts[1]), None # Project, Index, No Sub-Index
+        elif len(parts) == 4 and parts[2] == "sub":
+            return parts[0], int(parts[1]), int(parts[3]) # Project, Index, Sub-Index
+            
+        return None
 
     # --- ACTIONS ---
     def action_manage_projects(self) -> None:
@@ -448,11 +542,9 @@ class TaskManagerApp(App):
                 if new_name in self.data["projects"]:
                     self.notify("NEW DESIGNATION ALREADY EXISTS.", severity="error")
                     return
-                # Migrate tasks and colors
                 self.data["projects"][new_name] = self.data["projects"].pop(name)
                 self.data["project_colors"][new_name] = self.data["project_colors"].pop(name)
                 
-                # Fix filters if this project was selected
                 if self.data["view_settings"]["filter_project"] == name:
                     self.data["view_settings"]["filter_project"] = new_name
                     
@@ -484,30 +576,67 @@ class TaskManagerApp(App):
             return
         self.push_screen(TaskFormScreen(projects), self.handle_task_save)
 
+    def action_add_subtask(self) -> None:
+        selected = self.get_selected_task()
+        if not selected:
+            self.notify("NO TASK SELECTED.", severity="warning")
+            return
+            
+        proj, idx, sub_idx = selected
+        if sub_idx is not None:
+            self.notify("CANNOT NEST SUB-TASKS. Select a main parent task instead.", severity="error")
+            return
+            
+        projects = list(self.data["projects"].keys())
+        self.push_screen(TaskFormScreen(projects, parent_proj=proj, edit_idx=idx, is_subtask=True), self.handle_task_save)
+
     def action_edit_task(self) -> None:
         selected = self.get_selected_task()
         if not selected:
             self.notify("NO TASK SELECTED.", severity="warning")
             return
             
-        proj, idx = selected
-        task_data = self.data["projects"][proj][idx]
+        proj, idx, sub_idx = selected
         projects = list(self.data["projects"].keys())
         
-        self.push_screen(TaskFormScreen(projects, edit_proj=proj, edit_idx=idx, task_data=task_data), self.handle_task_save)
+        if sub_idx is not None:
+            task_data = self.data["projects"][proj][idx].get("sub_tasks", [])[sub_idx]
+            self.push_screen(TaskFormScreen(projects, edit_proj=proj, edit_idx=idx, edit_sub_idx=sub_idx, task_data=task_data, is_subtask=True), self.handle_task_save)
+        else:
+            task_data = self.data["projects"][proj][idx]
+            self.push_screen(TaskFormScreen(projects, edit_proj=proj, edit_idx=idx, task_data=task_data), self.handle_task_save)
 
     def handle_task_save(self, result: dict | None) -> None:
         if not result: return
         
         proj = result.pop("project")
         idx = result.pop("edit_idx")
+        sub_idx = result.pop("edit_sub_idx")
+        is_subtask = result.pop("is_subtask")
         
-        if idx is not None:
-            self.data["projects"][proj][idx] = result
-            self.notify("TASK OVERRIDE SUCCESSFUL.", severity="information")
+        if is_subtask:
+            if "sub_tasks" not in self.data["projects"][proj][idx]:
+                self.data["projects"][proj][idx]["sub_tasks"] = []
+                
+            if sub_idx is not None:
+                self.data["projects"][proj][idx]["sub_tasks"][sub_idx] = result
+                self.notify("SUB-TASK OVERRIDE SUCCESSFUL.", severity="information")
+            else:
+                self.data["projects"][proj][idx]["sub_tasks"].append(result)
+                # Automatically expand the parent so the user can see their new subtask
+                self.expanded_rows.add(f"{proj}::{idx}")
+                self.notify("SUB-TASK UPLOADED.", severity="information")
         else:
-            self.data["projects"][proj].append(result)
-            self.notify("TASK UPLOADED TO MAINFRAME.", severity="information")
+            if idx is not None:
+                # Protect existing subtasks during an edit
+                existing_subs = self.data["projects"][proj][idx].get("sub_tasks", [])
+                result["sub_tasks"] = existing_subs
+                self.data["projects"][proj][idx] = result
+                self.notify("TASK OVERRIDE SUCCESSFUL.", severity="information")
+            else:
+                result["sub_tasks"] = []
+                self.data["projects"][proj].append(result)
+                self.notify("TASK UPLOADED TO MAINFRAME.", severity="information")
             
         save_data(self.data)
         self.populate_table()
@@ -516,14 +645,21 @@ class TaskManagerApp(App):
         selected = self.get_selected_task()
         if not selected: return
         
-        self.push_screen(ConfirmScreen("Permanently delete this task?"), lambda conf: self.finalize_delete_task(conf, selected[0], selected[1]))
+        proj, idx, sub_idx = selected
+        msg = "Permanently delete this sub-task?" if sub_idx is not None else "Permanently delete this task and ALL its sub-tasks?"
+        self.push_screen(ConfirmScreen(msg), lambda conf: self.finalize_delete_task(conf, proj, idx, sub_idx))
 
-    def finalize_delete_task(self, confirm: bool | None, proj: str, idx: int) -> None:
+    def finalize_delete_task(self, confirm: bool | None, proj: str, idx: int, sub_idx: int | None) -> None:
         if confirm:
-            del self.data["projects"][proj][idx]
+            if sub_idx is not None:
+                del self.data["projects"][proj][idx]["sub_tasks"][sub_idx]
+                self.notify("SUB-TASK PURGED.", severity="warning")
+            else:
+                del self.data["projects"][proj][idx]
+                self.notify("TASK PURGED.", severity="warning")
+                
             save_data(self.data)
             self.populate_table()
-            self.notify("TASK PURGED.", severity="warning")
 
     def action_view_filter(self) -> None:
         projects = list(self.data["projects"].keys())
