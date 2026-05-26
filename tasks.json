@@ -1,0 +1,249 @@
+{
+    "projects": {
+        "MVE": [
+            {
+                "id": "MVE-001",
+                "task": "Desconectar el generador",
+                "priority": "4. ----",
+                "status": "DONE",
+                "deadline": null,
+                "notes": null
+            },
+            {
+                "id": "MVE-002",
+                "task": "Terminar enclosure Arduino",
+                "priority": "2. MEDIUM",
+                "status": "TO DO",
+                "deadline": null,
+                "notes": "Verificar montaje y fuente de poder"
+            },
+            {
+                "task": "Buscar pillow block y dise\u00f1ar soluci\u00f3n",
+                "priority": "1. HIGH",
+                "status": "IN PROGRESS",
+                "notes": "Buscar como chumacera",
+                "sub_tasks": [
+                    {
+                        "task": "Cotizar en Rodamundo",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": null
+                    },
+                    {
+                        "task": "Modelar un preview del soporte de chumasera",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    },
+                    {
+                        "task": "Cotizar en Rodacenter",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": null
+                    }
+                ]
+            },
+            {
+                "task": "Mecanizar acople el\u00e1stico",
+                "priority": "2. MEDIUM",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "Coordinar visita de Braulio - Juan Pablo",
+                "priority": "3. LOW",
+                "status": "ON HOLD",
+                "deadline": null,
+                "notes": "A la espera de que Braulio avise cuando viene"
+            },
+            {
+                "task": "Desconectar tablero del motor y guardarlo",
+                "priority": "1. HIGH",
+                "status": "IN PROGRESS",
+                "notes": null
+            },
+            {
+                "task": "Regularizar consumos con GERA",
+                "priority": "4. ----",
+                "status": "DONE",
+                "notes": null,
+                "sub_tasks": []
+            },
+            {
+                "task": "Ordenar archivos del proyecto",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "Prueba ramp-up y ramp-down",
+                "priority": "2. MEDIUM",
+                "status": "TO DO",
+                "notes": "Deber\u00eda ser aprox 30 segundos"
+            },
+            {
+                "task": "Conseguir un cobertor para el tablero",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "An\u00e1lsis de costo de cablear hasta dyno",
+                "priority": "2. MEDIUM",
+                "status": "TO DO",
+                "notes": "A la espera de cotizaci\u00f3n de Braulio"
+            }
+        ],
+        "SDRP": [
+            {
+                "id": "SDRP-001",
+                "task": "Pasar cacho a Diego",
+                "priority": "4. ----",
+                "status": "DONE",
+                "deadline": null,
+                "notes": null
+            }
+        ],
+        "SATEC": [
+            {
+                "task": "Ingenier\u00eda inversa soporte escape Shaker",
+                "priority": "2. MEDIUM",
+                "status": "TO DO",
+                "notes": "Cotizar tambi\u00e9n fuera de Tecnipak"
+            },
+            {
+                "task": "Buscar motores chinos reemplazo de los 454 seg\u00fan solicitud de German",
+                "priority": "2. MEDIUM",
+                "status": "TO DO",
+                "notes": "Weichai es una de las marcas preferidas"
+            }
+        ],
+        "EXTRAS": [
+            {
+                "task": "Buscar Volvo XC60 rear door trim",
+                "priority": "3. LOW",
+                "status": "ON HOLD",
+                "notes": "A la espera de que FDLL traiga la camioneta"
+            },
+            {
+                "task": "Continuar con el soporte de esmeril para MSM",
+                "priority": "2. MEDIUM",
+                "status": "ON HOLD",
+                "notes": "Miercoles 27-05-26 Don Alfredo va a buscar el resorte"
+            }
+        ],
+        "DOSATECH": [
+            {
+                "task": "Retirar y verificar soporte de b\u00e1scula",
+                "priority": "4. ----",
+                "status": "DONE",
+                "notes": null
+            },
+            {
+                "task": "Tirar un poco de adhesivo por prevenci\u00f3n",
+                "priority": "2. MEDIUM",
+                "status": "IN PROGRESS",
+                "notes": null
+            },
+            {
+                "task": "Compra insumos para sensores de presi\u00f3n",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "Instalar sensores de presi\u00f3n",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "Dise\u00f1ar e imprimir soporte de pantalla",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "Instalar soporte de pantalla",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            }
+        ],
+        "CAJA NEMA 4": [
+            {
+                "task": "Dise\u00f1o de caja \"C\" y tapa",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "Imprimir modelo a escala en 3D para prueba de burletes",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "Buscar y comprar burletes para prueba",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "Ver posibilidad de poner pantalla HMI",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            }
+        ],
+        "BEPO": [
+            {
+                "task": "Reparar los chasis",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": "Planos de modificaci\u00f3n ya hechos"
+            },
+            {
+                "task": "Modificar el estanque para escotillas",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": "Planos listos"
+            },
+            {
+                "task": "Montaje de fittings en el estanque",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            }
+        ],
+        "ORCELL": [
+            {
+                "task": "Crear grupo de Whatsapp para consultar dudas antes de ir a terreno",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            },
+            {
+                "task": "Definir fecha de montaje en El Aromo",
+                "priority": "3. LOW",
+                "status": "TO DO",
+                "notes": null
+            }
+        ]
+    },
+    "project_colors": {
+        "MVE": "#FFFF00",
+        "SDRP": "blue",
+        "SATEC": "cyan",
+        "EXTRAS": "white",
+        "DOSATECH": "violet",
+        "CAJA NEMA 4": "green",
+        "BEPO": "white",
+        "ORCELL": "blue"
+    },
+    "view_settings": {
+        "sort_by": "priority",
+        "filter_project": null,
+        "filter_priority": null
+    }
+}
