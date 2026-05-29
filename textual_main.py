@@ -64,13 +64,16 @@ class SystemStatus(Static):
         self.app.call_from_thread(self.render_status)
 
     def render_status(self) -> None:
-        content = f"[bold white]DATE:[/bold white] {self.date_str}  |  [bold cyan]TIME:[/bold cyan] {self.time_str}  |  [bold yellow]TEMP:[/bold yellow] {self.weather_str}°C [white](Quilicura)[/white]"
+        content = f"[#00ff00]DATE:[/#00ff00] {self.date_str}  |  [#00ff00]TIME:[/#00ff00] {self.time_str}  |  [#00ff00]TEMP:[/#00ff00] {self.weather_str}°C"
         self.update(content)
 
 
 # --- MODAL SCREENS ---
 class ConfirmScreen(ModalScreen[bool]):
     """Generic confirmation dialog."""
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
     def __init__(self, message: str):
         super().__init__()
         self.message = message
@@ -88,6 +91,8 @@ class ConfirmScreen(ModalScreen[bool]):
 
 class TaskFormScreen(ModalScreen[dict]):
     """Handles Adding and Editing both Main Tasks and Sub-tasks."""
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
     
     def __init__(self, projects: list, edit_proj: str | None = None, edit_idx: int | None = None, edit_sub_idx: int | None = None, task_data: dict | None = None, is_subtask: bool = False, parent_proj: str | None = None) -> None:
         super().__init__()
@@ -172,6 +177,9 @@ class TaskFormScreen(ModalScreen[dict]):
 
 class ViewFilterScreen(ModalScreen[dict]):
     """Configures sorting and filtering."""
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
     def __init__(self, projects: list, current_settings: dict):
         super().__init__()
         self.projects = projects
@@ -224,6 +232,9 @@ class ViewFilterScreen(ModalScreen[dict]):
 
 class ProjectManagerScreen(ModalScreen[dict]):
     """Adds, edits, or deletes projects."""
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
     def __init__(self, projects: list):
         super().__init__()
         self.projects = projects
@@ -302,7 +313,7 @@ class TaskManagerApp(App):
     Screen { background: $surface; }
     
     /* Reduced height and adapted for a single 100% width panel */
-    #top-bar { height: 3; margin-bottom: 1; }
+    #top-bar { height: 3; margin-bottom: 0; }
     SystemStatus { width: 100%; height: 100%; border: round #00ff00; border-title-color: #00ff00; content-align: center middle; }
     DataTable { border: round #00ff00; height: 1fr; }
     
@@ -352,7 +363,7 @@ class TaskManagerApp(App):
     def compose(self) -> ComposeResult:
         with Horizontal(id="top-bar"):
             status = SystemStatus()
-            status.border_title = "SYS_STATUS"
+            status.border_title = " TASKS MANAGER "
             yield status
 
         yield DataTable(id="task-table", cursor_type="row")

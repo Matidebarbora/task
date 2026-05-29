@@ -18,27 +18,63 @@
                 "notes": "Verificar montaje y fuente de poder"
             },
             {
-                "task": "Buscar pillow block y dise\u00f1ar soluci\u00f3n",
+                "task": "Desarrollo Pillow block",
                 "priority": "1. HIGH",
                 "status": "IN PROGRESS",
-                "notes": "Buscar como chumacera",
+                "notes": null,
                 "sub_tasks": [
                     {
-                        "task": "Cotizar en Rodamundo",
+                        "task": "Modelar montaje de rodamiento",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "Rodamiento 6018 2Z ya comprado."
+                    },
+                    {
+                        "task": "Comprar Seeger D140",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "Madrigal"
+                    },
+                    {
+                        "task": "Planos de fabricaci\u00f3n",
                         "priority": "4. ----",
                         "status": "DONE",
                         "notes": null
                     },
                     {
-                        "task": "Modelar un preview del soporte de chumasera",
+                        "task": "Montaje manual de prueba del rodamiento",
+                        "priority": "2. MEDIUM",
+                        "status": "ON HOLD",
+                        "notes": "A la espera de que llegue"
+                    },
+                    {
+                        "task": "Hacer LDM",
                         "priority": "2. MEDIUM",
                         "status": "TO DO",
                         "notes": null
                     },
                     {
-                        "task": "Cotizar en Rodacenter",
-                        "priority": "4. ----",
-                        "status": "DONE",
+                        "task": "Subir archivos de corte a Lantek",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    },
+                    {
+                        "task": "Solicitar NV",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    },
+                    {
+                        "task": "Crear carpeta de OP",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    },
+                    {
+                        "task": "Solicitar fabricaci\u00f3n",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
                         "notes": null
                     }
                 ]
@@ -47,7 +83,8 @@
                 "task": "Mecanizar acople el\u00e1stico",
                 "priority": "2. MEDIUM",
                 "status": "TO DO",
-                "notes": null
+                "notes": null,
+                "sub_tasks": []
             },
             {
                 "task": "Coordinar visita de Braulio - Juan Pablo",
@@ -58,9 +95,10 @@
             },
             {
                 "task": "Desconectar tablero del motor y guardarlo",
-                "priority": "1. HIGH",
-                "status": "IN PROGRESS",
-                "notes": null
+                "priority": "4. ----",
+                "status": "DONE",
+                "notes": null,
+                "sub_tasks": []
             },
             {
                 "task": "Regularizar consumos con GERA",
@@ -82,34 +120,21 @@
                 "notes": "Deber\u00eda ser aprox 30 segundos"
             },
             {
-                "task": "Conseguir un cobertor para el tablero",
-                "priority": "3. LOW",
-                "status": "TO DO",
-                "notes": null
-            },
-            {
                 "task": "An\u00e1lsis de costo de cablear hasta dyno",
                 "priority": "2. MEDIUM",
-                "status": "TO DO",
-                "notes": "A la espera de cotizaci\u00f3n de Braulio"
+                "status": "ON HOLD",
+                "notes": "A la espera de cotizaci\u00f3n de Braulio",
+                "sub_tasks": []
             }
         ],
-        "SDRP": [
-            {
-                "id": "SDRP-001",
-                "task": "Pasar cacho a Diego",
-                "priority": "4. ----",
-                "status": "DONE",
-                "deadline": null,
-                "notes": null
-            }
-        ],
+        "SDRP": [],
         "SATEC": [
             {
                 "task": "Ingenier\u00eda inversa soporte escape Shaker",
                 "priority": "2. MEDIUM",
                 "status": "TO DO",
-                "notes": "Cotizar tambi\u00e9n fuera de Tecnipak"
+                "notes": "Cotizar tambi\u00e9n fuera de Tecnipak",
+                "sub_tasks": []
             },
             {
                 "task": "Buscar motores chinos reemplazo de los 454 seg\u00fan solicitud de German",
@@ -141,33 +166,56 @@
             },
             {
                 "task": "Tirar un poco de adhesivo por prevenci\u00f3n",
-                "priority": "2. MEDIUM",
-                "status": "IN PROGRESS",
-                "notes": null
+                "priority": "4. ----",
+                "status": "DONE",
+                "notes": null,
+                "sub_tasks": []
             },
             {
-                "task": "Compra insumos para sensores de presi\u00f3n",
+                "task": "Sensor de presi\u00f3n",
                 "priority": "3. LOW",
                 "status": "TO DO",
-                "notes": null
+                "notes": null,
+                "sub_tasks": [
+                    {
+                        "task": "Comprar fittings a Coohidram",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    },
+                    {
+                        "task": "Instalar sensor de presi\u00f3n",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    }
+                ]
             },
             {
-                "task": "Instalar sensores de presi\u00f3n",
+                "task": "Soporte de pantalla 3D",
                 "priority": "3. LOW",
                 "status": "TO DO",
-                "notes": null
-            },
-            {
-                "task": "Dise\u00f1ar e imprimir soporte de pantalla",
-                "priority": "3. LOW",
-                "status": "TO DO",
-                "notes": null
-            },
-            {
-                "task": "Instalar soporte de pantalla",
-                "priority": "3. LOW",
-                "status": "TO DO",
-                "notes": null
+                "notes": null,
+                "sub_tasks": [
+                    {
+                        "task": "Dise\u00f1ar soporte",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    },
+                    {
+                        "task": "Imprimir soporte",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    },
+                    {
+                        "task": "Montar soporte",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    }
+                ]
             }
         ],
         "CAJA NEMA 4": [
@@ -218,16 +266,24 @@
         ],
         "ORCELL": [
             {
-                "task": "Crear grupo de Whatsapp para consultar dudas antes de ir a terreno",
+                "task": "Instalaci\u00f3n telemetr\u00eda",
                 "priority": "3. LOW",
                 "status": "TO DO",
-                "notes": null
-            },
-            {
-                "task": "Definir fecha de montaje en El Aromo",
-                "priority": "3. LOW",
-                "status": "TO DO",
-                "notes": null
+                "notes": null,
+                "sub_tasks": [
+                    {
+                        "task": "Crear grupo de Whatsapp",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": "Responder a Nick Guilland"
+                    },
+                    {
+                        "task": "Definir fecha de ida a El Aromo",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    }
+                ]
             }
         ]
     },
