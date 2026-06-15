@@ -18,16 +18,16 @@
                 "notes": "Verificar montaje y fuente de poder"
             },
             {
-                "task": "Desarrollo Pillow block",
+                "task": "PILLOW BLOCK MVE",
                 "priority": "1. HIGH",
-                "status": "IN PROGRESS",
+                "status": "TO DO",
                 "notes": null,
                 "sub_tasks": [
                     {
                         "task": "Modelar montaje de rodamiento",
                         "priority": "4. ----",
                         "status": "DONE",
-                        "notes": "Rodamiento 6018 2Z ya comprado."
+                        "notes": "Rodamiento 6018 2Z"
                     },
                     {
                         "task": "Comprar Seeger D140",
@@ -42,40 +42,52 @@
                         "notes": null
                     },
                     {
-                        "task": "Montaje manual de prueba del rodamiento",
-                        "priority": "2. MEDIUM",
-                        "status": "ON HOLD",
-                        "notes": "A la espera de que llegue"
+                        "task": "Dise\u00f1ar camisa de rodamiento",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "Encamisado seg\u00fan Andres"
                     },
                     {
                         "task": "Hacer LDM",
-                        "priority": "2. MEDIUM",
-                        "status": "TO DO",
+                        "priority": "4. ----",
+                        "status": "DONE",
                         "notes": null
                     },
                     {
                         "task": "Subir archivos de corte a Lantek",
-                        "priority": "2. MEDIUM",
-                        "status": "TO DO",
+                        "priority": "4. ----",
+                        "status": "DONE",
                         "notes": null
                     },
                     {
                         "task": "Solicitar NV",
-                        "priority": "2. MEDIUM",
-                        "status": "TO DO",
-                        "notes": null
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "NV 32530 - CZO1629301"
                     },
                     {
                         "task": "Crear carpeta de OP",
-                        "priority": "2. MEDIUM",
-                        "status": "TO DO",
+                        "priority": "4. ----",
+                        "status": "DONE",
                         "notes": null
                     },
                     {
                         "task": "Solicitar fabricaci\u00f3n",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "A la espera de que llegue el Seeger"
+                    },
+                    {
+                        "task": "Agregar piezas del Shaker al conjunto",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "Plano, archivos de corte y Lantek"
+                    },
+                    {
+                        "task": "Hablar con MSM",
                         "priority": "2. MEDIUM",
-                        "status": "TO DO",
-                        "notes": null
+                        "status": "IN PROGRESS",
+                        "notes": "Entregar Seeger a producci\u00f3n"
                     }
                 ]
             },
@@ -88,10 +100,10 @@
             },
             {
                 "task": "Coordinar visita de Braulio - Juan Pablo",
-                "priority": "3. LOW",
-                "status": "ON HOLD",
-                "deadline": null,
-                "notes": "A la espera de que Braulio avise cuando viene"
+                "priority": "4. ----",
+                "status": "DONE",
+                "notes": "Juan Pablo ya tiene toda la info",
+                "sub_tasks": []
             },
             {
                 "task": "Desconectar tablero del motor y guardarlo",
@@ -114,33 +126,185 @@
                 "notes": null
             },
             {
-                "task": "Prueba ramp-up y ramp-down",
-                "priority": "2. MEDIUM",
+                "task": "TABLERO LUREYE",
+                "priority": "1. HIGH",
                 "status": "TO DO",
-                "notes": "Deber\u00eda ser aprox 30 segundos"
+                "notes": null,
+                "sub_tasks": [
+                    {
+                        "task": "Configurar ramp-up y ramp-down",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "Qued\u00f3 en 45 seg."
+                    },
+                    {
+                        "task": "Pedir redline de planos",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": "Insistir feedback"
+                    },
+                    {
+                        "task": "Coordinar mejora de HMI",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "Agendado para el martes 09/06"
+                    },
+                    {
+                        "task": "Coordinar conexi\u00f3n de tablero a Satec",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "Verificar pago a Braulio"
+                    },
+                    {
+                        "task": "Arreglar HMI junto a Lureye",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "11-06-2026 qued\u00f3 listo"
+                    },
+                    {
+                        "task": "Poner cobertor al tablero",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": null
+                    },
+                    {
+                        "task": "Revisar info sobre sensor de temperatura",
+                        "priority": "2. MEDIUM",
+                        "status": "IN PROGRESS",
+                        "notes": "Tendr\u00eda que haber llegado"
+                    },
+                    {
+                        "task": "Comprar sensor de temperatura nuevo",
+                        "priority": "2. MEDIUM",
+                        "status": "ON HOLD",
+                        "notes": "A la espera de la info de Diego"
+                    },
+                    {
+                        "task": "Comprar sensor y transmisor nuevo",
+                        "priority": "2. MEDIUM",
+                        "status": "IN PROGRESS",
+                        "notes": null
+                    }
+                ]
             },
             {
                 "task": "An\u00e1lsis de costo de cablear hasta dyno",
                 "priority": "2. MEDIUM",
                 "status": "ON HOLD",
-                "notes": "A la espera de cotizaci\u00f3n de Braulio",
+                "notes": "Son aprox 65m de cable",
                 "sub_tasks": []
+            },
+            {
+                "task": "MECANIZADO ACOPLE EL\u00c1STICO",
+                "priority": "1. HIGH",
+                "status": "TO DO",
+                "notes": null,
+                "sub_tasks": [
+                    {
+                        "task": "Revisar planos con MSM",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": null
+                    },
+                    {
+                        "task": "Hacer plano de fabricaci\u00f3n",
+                        "priority": "2. MEDIUM",
+                        "status": "IN PROGRESS",
+                        "notes": null
+                    },
+                    {
+                        "task": "Pedir cotizaci\u00f3n a Cohidram",
+                        "priority": "2. MEDIUM",
+                        "status": "IN PROGRESS",
+                        "notes": null
+                    }
+                ]
             }
         ],
         "SDRP": [],
         "SATEC": [
             {
-                "task": "Ingenier\u00eda inversa soporte escape Shaker",
-                "priority": "2. MEDIUM",
+                "task": "SOPORTE ESCAPE SHAKER",
+                "priority": "1. HIGH",
                 "status": "TO DO",
-                "notes": "Cotizar tambi\u00e9n fuera de Tecnipak",
-                "sub_tasks": []
+                "notes": null,
+                "sub_tasks": [
+                    {
+                        "task": "Modelado 3D",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "Verificar dimensiones con impresi\u00f3n 3D"
+                    },
+                    {
+                        "task": "Cotizar en Fabrinox",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "CLP 190.000 por dos unidades"
+                    },
+                    {
+                        "task": "Cotizar en Lemaco",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "CLP 50.000 por dos unidades. Material incluido."
+                    },
+                    {
+                        "task": "Dise\u00f1o final",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": null
+                    },
+                    {
+                        "task": "Fabricaci\u00f3n Tecnipak",
+                        "priority": "2. MEDIUM",
+                        "status": "ON HOLD",
+                        "notes": "Estar\u00e1 a fines de Junio"
+                    }
+                ]
             },
             {
-                "task": "Buscar motores chinos reemplazo de los 454 seg\u00fan solicitud de German",
-                "priority": "2. MEDIUM",
+                "task": "REEMPLAZO CAT C7.1 TA",
+                "priority": "1. HIGH",
                 "status": "TO DO",
-                "notes": "Weichai es una de las marcas preferidas"
+                "notes": null,
+                "sub_tasks": [
+                    {
+                        "task": "Reuni\u00f3n con representante Weichai 10AM",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": null
+                    },
+                    {
+                        "task": "Definir cual es el \"SAE\" nuestro y cual pedir",
+                        "priority": "4. ----",
+                        "status": "DONE",
+                        "notes": "SAE J617 carcaza y J620 flywheel"
+                    },
+                    {
+                        "task": "Analizar curvas de torque y potencia",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    },
+                    {
+                        "task": "Verificar especificaci\u00f3n de flywheel de CAT",
+                        "priority": "2. MEDIUM",
+                        "status": "TO DO",
+                        "notes": null
+                    },
+                    {
+                        "task": "Especificar governor",
+                        "priority": "2. MEDIUM",
+                        "status": "ON HOLD",
+                        "notes": "Esperando respuesta de Weichai"
+                    }
+                ]
+            },
+            {
+                "task": "Dise\u00f1o caja camioneta Jose",
+                "priority": "2. MEDIUM",
+                "status": "IN PROGRESS",
+                "notes": null,
+                "sub_tasks": []
             }
         ],
         "EXTRAS": [
@@ -153,8 +317,9 @@
             {
                 "task": "Continuar con el soporte de esmeril para MSM",
                 "priority": "2. MEDIUM",
-                "status": "ON HOLD",
-                "notes": "Miercoles 27-05-26 Don Alfredo va a buscar el resorte"
+                "status": "TO DO",
+                "notes": null,
+                "sub_tasks": []
             }
         ],
         "DOSATECH": [
@@ -300,6 +465,7 @@
     "view_settings": {
         "sort_by": "priority",
         "filter_project": null,
-        "filter_priority": null
+        "filter_priority": null,
+        "hide_done": true
     }
 }

@@ -19,11 +19,17 @@ def load_data():
         return {
             "projects": {}, 
             "project_colors": {}, 
-            "view_settings": {"sort_by": "priority", "filter_project": None, "filter_priority": None, "theme": "textual-dark"}
+            "view_settings": {
+                "sort_by": "priority", 
+                "filter_project": None, 
+                "filter_priority": None, 
+                "theme": "textual-dark",
+                "hide_done": False  # Add this line
+            }
         }
     with open(DATA_FILE, "r") as file:
         return json.load(file)
-
+    
 def save_data(data):
     with open(DATA_FILE, "w") as file:
         json.dump(data, file, indent=4)
@@ -342,13 +348,27 @@ class TaskManagerApp(App):
         ("e", "edit_task", "Edit Task"),
         ("d", "delete_task", "Delete Task"),
         ("v", "view_filter", "View/Filter"),
+        ("h", "toggle_hide_done", "Hide Done"),  # Add this line
         ("q", "app.quit", "Quit"),
     ]
+
+    def action_toggle_hide_done(self) -> None:
+        """Toggles the visibility of tasks marked as DONE."""
+        self.hide_done = not self.hide_done
+        self.data["view_settings"]["hide_done"] = self.hide_done
+        save_data(self.data)
+        
+        status_msg = "HIDDEN" if self.hide_done else "VISIBLE"
+        self.notify(f"'DONE' TASKS ARE NOW {status_msg}.", severity="information")
+        self.populate_table()
 
     def on_mount(self) -> None:
         self.title = "TASKS_MANAGER"
         self.data = load_data()
         self.expanded_rows = set()
+        
+        # Load the hide_done state
+        self.hide_done = self.data.setdefault("view_settings", {}).get("hide_done", False)
         
         if "theme" in self.data.get("view_settings", {}):
             self.theme = self.data["view_settings"]["theme"]
@@ -391,12 +411,16 @@ class TaskManagerApp(App):
             for idx, t in enumerate(tasks):
                 all_tasks.append((project, idx, t))
                 
-        if view["filter_project"]:
+        if view.get("filter_project"):
             all_tasks = [x for x in all_tasks if x[0] == view["filter_project"]]
-        if view["filter_priority"]:
+        if view.get("filter_priority"):
             all_tasks = [x for x in all_tasks if x[2]["priority"] == view["filter_priority"]]
             
-        if view["sort_by"] == "project":
+        # === NEW: Filter out DONE main tasks ===
+        if self.hide_done:
+            all_tasks = [x for x in all_tasks if x[2].get("status") != "DONE"]
+            
+        if view.get("sort_by", "priority") == "project":
             all_tasks.sort(key=lambda x: x[0])
         else:
             all_tasks.sort(key=lambda x: (x[2]["priority"], x[0]))
@@ -420,7 +444,13 @@ class TaskManagerApp(App):
             row_key = f"{proj}::{idx}"
             sub_tasks = t.get("sub_tasks", [])
             
-            if sub_tasks:
+            # === NEW: Determine if there are visible sub-tasks ===
+            if self.hide_done:
+                visible_subs = [s for s in sub_tasks if s.get("status") != "DONE"]
+            else:
+                visible_subs = sub_tasks
+            
+            if visible_subs:
                 indicator = "[bold cyan]▼[/] " if row_key in self.expanded_rows else "[bold white]▶[/] "
             else:
                 indicator = "  "
@@ -429,6 +459,10 @@ class TaskManagerApp(App):
             
             if row_key in self.expanded_rows:
                 for sub_idx, sub in enumerate(sub_tasks):
+                    # === NEW: Filter out DONE sub-tasks ===
+                    if self.hide_done and sub.get("status") == "DONE":
+                        continue
+                    
                     sub_key = f"{row_key}::sub::{sub_idx}"
                     sub_stat = sub.get("status", "TO DO")
                     
@@ -475,6 +509,7 @@ class TaskManagerApp(App):
             return parts[0], int(parts[1]), int(parts[3])
             
         return None
+    
 
     # --- ACTIONS ---
     def action_manage_projects(self) -> None:
