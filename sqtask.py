@@ -9,8 +9,8 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
-from textual.screen import ModalScreen
-from textual.widgets import DataTable, Footer, Static, Input, Select, Button, Label
+from textual.screen import ModalScreen, Screen
+from textual.widgets import DataTable, Footer, Static, Input, Select, Button, Label, TextArea
 
 DB_FILE = "tasks.db"
 
@@ -59,6 +59,14 @@ def init_db() -> None:
                 key         TEXT PRIMARY KEY,
                 value       TEXT
             );
+                           
+            CREATE TABLE IF NOT EXISTS project_logs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                project     TEXT NOT NULL REFERENCES projects(name) ON UPDATE CASCADE ON DELETE CASCADE,
+                log_date    TEXT NOT NULL,
+                title       TEXT NOT NULL DEFAULT 'Milestone',
+                notes       TEXT NOT NULL
+            );
         """)
         # Seed default view settings if missing
         defaults = {
@@ -73,6 +81,15 @@ def init_db() -> None:
             conn.execute(
                 "INSERT OR IGNORE INTO view_settings (key, value) VALUES (?, ?)", (k, v)
             )
+
+
+def upgrade_project_logs_table() -> None:
+    """Run this once on startup to ensure the title column exists for older DB versions."""
+    with get_conn() as conn:
+        try:
+            conn.execute("ALTER TABLE project_logs ADD COLUMN title TEXT NOT NULL DEFAULT 'Milestone'")
+        except sqlite3.OperationalError:
+            pass # Column already exists
 
 
 # --- Migration helper ---------------------------------------------------
@@ -261,7 +278,6 @@ def db_add_task(project: str, task: str, priority: str, status: str, notes: str 
             "INSERT INTO tasks (project, task, priority, status, notes, sort_order) VALUES (?,?,?,?,?,?)",
             (project, task, priority, status, notes, max_order + 1),
         )
-        # Add "or 0" to ensure an int is always returned
         return cur.lastrowid or 0
 
 
@@ -287,7 +303,6 @@ def db_add_subtask(task_id: int, task: str, status: str, notes: str | None) -> i
             "INSERT INTO sub_tasks (task_id, task, status, notes, sort_order) VALUES (?,?,?,?,?)",
             (task_id, task, status, notes, max_order + 1),
         )
-        # Add "or 0" here as well
         return cur.lastrowid or 0
 
 
@@ -303,6 +318,44 @@ def db_delete_subtask(sub_id: int) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM sub_tasks WHERE id=?", (sub_id,))
 
+
+def db_get_project_logs(project: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, log_date, title, notes FROM project_logs WHERE project=? ORDER BY log_date DESC, id DESC", 
+            (project,)
+        ).fetchall()
+        return [{"id": r["id"], "log_date": r["log_date"], "title": r["title"], "notes": r["notes"]} for r in rows]
+
+
+def db_add_project_log(project: str, log_date: str, title: str, notes: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO project_logs (project, log_date, title, notes) VALUES (?, ?, ?, ?)",
+            (project, log_date, title, notes)
+        )
+
+
+def db_update_project_log(log_id: int, log_date: str, title: str, notes: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE project_logs SET log_date=?, title=?, notes=? WHERE id=?",
+            (log_date, title, notes, log_id)
+        )
+
+def db_delete_project_log(log_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM project_logs WHERE id=?", (log_id,))
+
+def db_get_log_by_id(log_id: int) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, log_date, title, notes FROM project_logs WHERE id=?",
+            (log_id,)
+        ).fetchone()
+        if row:
+            return {"id": row["id"], "log_date": row["log_date"], "title": row["title"], "notes": row["notes"]}
+        return None
 
 # ---------------------------------------------------------------------------
 # UI COMPONENTS  (unchanged from original)
@@ -341,10 +394,7 @@ class SystemStatus(Static):
         self.app.call_from_thread(self.render_status)
 
     def render_status(self) -> None:
-        # Grab the dynamic color from the main app, fallback to green
         color = getattr(self.app, "app_border", "#00ff00")
-        
-        # Use the dynamic color variable in the rich text tags
         content = (
             f"[{color}]DATE:[/] {self.date_str}  |  "
             f"[{color}]TIME:[/] {self.time_str}  |  "
@@ -353,7 +403,7 @@ class SystemStatus(Static):
         self.update(content)
 
 
-# --- MODAL SCREENS (unchanged) ------------------------------------------
+# --- MODAL SCREENS ------------------------------------------
 
 class ConfirmScreen(ModalScreen[bool]):
     BINDINGS = [("escape", "cancel", "Cancel")]
@@ -373,7 +423,6 @@ class ConfirmScreen(ModalScreen[bool]):
         self.dismiss(event.button.id == "btn-yes")
 
     def on_mount(self) -> None:
-        # Pull the custom color from the main app, fallback to green
         color = getattr(self.app, "app_border", "#00ff00")
         try:
             self.query_one("#dialog").styles.border = ("heavy", color)
@@ -509,7 +558,6 @@ class TaskFormScreen(ModalScreen[dict]):
             self.dismiss(None)
 
     def on_mount(self) -> None:
-        # Pull the custom color from the main app, fallback to green
         color = getattr(self.app, "app_border", "#00ff00")
         try:
             self.query_one("#dialog").styles.border = ("heavy", color)
@@ -580,7 +628,6 @@ class ViewFilterScreen(ModalScreen[dict]):
             self.dismiss(None)
 
     def on_mount(self) -> None:
-        # Pull the custom color from the main app, fallback to green
         color = getattr(self.app, "app_border", "#00ff00")
         try:
             self.query_one("#dialog").styles.border = ("heavy", color)
@@ -669,7 +716,6 @@ class ProjectManagerScreen(ModalScreen[dict]):
             self.dismiss(None)
 
     def on_mount(self) -> None:
-        # Pull the custom color from the main app, fallback to green
         color = getattr(self.app, "app_border", "#00ff00")
         try:
             self.query_one("#dialog").styles.border = ("heavy", color)
@@ -696,7 +742,6 @@ class PreferencesScreen(ModalScreen[str]):
             "VIOLET": "#EE82EE",
         }
         
-        # Render names in their exact hex color
         color_opts = [
             (f"[{hex_code} bold]{name}[/]", hex_code)
             for name, hex_code in color_palette.items()
@@ -721,17 +766,295 @@ class PreferencesScreen(ModalScreen[str]):
             if color == Select.BLANK:
                 self.dismiss(None)
             else:
-                self.dismiss(str(color))  # str() guarantees the type checker is happy
+                self.dismiss(str(color)) 
         elif event.button.id == "btn-cancel":
             self.dismiss(None)
 
     def on_mount(self) -> None:
-        # Pull the custom color from the main app, fallback to green
         color = getattr(self.app, "app_border", "#00ff00")
         try:
             self.query_one("#dialog").styles.border = ("heavy", color)
         except Exception:
             pass
+
+class LogDetailScreen(ModalScreen[None]):
+    BINDINGS = [
+        ("escape", "close", "Close"), 
+        ("enter", "close", "Close")
+    ]
+
+    def __init__(self, log_data: dict):
+        super().__init__()
+        self.log_data = log_data
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Label(f"[bold cyan]{self.log_data['log_date']} - {self.log_data['title']}[/]", id="dialog-title")
+            
+            notes_area = TextArea(text=self.log_data.get("notes", ""), read_only=True)
+            notes_area.styles.height = 25
+            yield notes_area
+            
+            with Horizontal(id="dialog-buttons"):
+                yield Button("CLOSE", variant="primary", id="btn-close")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-close":
+            self.dismiss(None)
+            
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+    def on_mount(self) -> None:
+        color = getattr(self.app, "app_border", "#00ff00")
+        try:
+            self.query_one("#dialog").styles.border = ("heavy", color)
+        except Exception:
+            pass
+# ---------------------------------------------------------------------------
+# LOG SCREENS 
+# ---------------------------------------------------------------------------
+
+class LogProjectSelectScreen(ModalScreen[str]):
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, projects: list):
+        super().__init__()
+        self.projects = projects
+
+    def compose(self) -> ComposeResult:
+        proj_opts = [(p, p) for p in self.projects]
+        with Vertical(id="dialog"):
+            yield Label("[bold cyan]SELECT PROJECT FOR LOG[/bold cyan]", id="dialog-title")
+            yield Select(proj_opts, id="select-log-proj", prompt="Select Project...")
+            
+            with Horizontal(id="dialog-buttons"):
+                yield Button("OPEN LOG", variant="success", id="btn-open")
+                yield Button("CANCEL", variant="error", id="btn-cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-open":
+            selection = self.query_one("#select-log-proj", Select).value
+            if selection == Select.BLANK:
+                self.app.notify("Please select a project.", severity="error")
+                return
+            self.dismiss(str(selection))
+        elif event.button.id == "btn-cancel":
+            self.dismiss(None)
+
+    def on_mount(self) -> None:
+        color = getattr(self.app, "app_border", "#00ff00")
+        try:
+            self.query_one("#dialog").styles.border = ("heavy", color)
+        except Exception:
+            pass
+
+class LogFormScreen(ModalScreen[dict]):
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, log_data: dict | None = None):
+        super().__init__()
+        self.log_data = log_data or {}
+        self.is_edit = bool(self.log_data)
+
+    def compose(self) -> ComposeResult:
+        default_date = self.log_data.get("log_date", datetime.now().strftime("%Y-%m-%d"))
+        title_val = self.log_data.get("title", "")
+        notes_val = self.log_data.get("notes", "")
+        
+        form_title = "[bold yellow]EDIT MILESTONE LOG[/]" if self.is_edit else "[bold cyan]ADD MILESTONE LOG[/]"
+
+        with Vertical(id="dialog"):
+            yield Label(form_title, id="dialog-title")
+            
+            yield Label("Date:")
+            yield Input(value=default_date, id="input-date")
+            
+            yield Label("Title:")
+            yield Input(value=title_val, placeholder="e.g., Meeting with client...", id="input-title")
+            
+            yield Label("Notes:")
+            notes_area = TextArea(text=notes_val, id="input-notes")
+            notes_area.styles.height = 15 
+            yield notes_area
+            
+            with Horizontal(id="dialog-buttons"):
+                yield Button("SAVE", variant="success", id="btn-save")
+                if self.is_edit:
+                    yield Button("DELETE", variant="error", id="btn-delete")
+                yield Button("CANCEL", variant="primary", id="btn-cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-save":
+            date_val = self.query_one("#input-date", Input).value.strip()
+            title_val = self.query_one("#input-title", Input).value.strip()
+            notes_val = self.query_one("#input-notes", TextArea).text.strip()
+            
+            if not date_val or not title_val or not notes_val:
+                self.app.notify("Date, Title, and Notes are required.", severity="error")
+                return
+            
+            self.dismiss({
+                "action": "save",
+                "id": self.log_data.get("id"),
+                "date": date_val, 
+                "title": title_val, 
+                "notes": notes_val
+            })
+            
+        elif event.button.id == "btn-delete":
+            self.dismiss({
+                "action": "delete",
+                "id": self.log_data.get("id")
+            })
+            
+        elif event.button.id == "btn-cancel":
+            self.dismiss(None)
+
+    def on_mount(self) -> None:
+        color = getattr(self.app, "app_border", "#00ff00")
+        try:
+            self.query_one("#dialog").styles.border = ("heavy", color)
+        except Exception:
+            pass
+
+class ProjectLogScreen(Screen):
+    BINDINGS = [
+        ("escape", "app.pop_screen", "Back to Tasks"),
+        ("a", "add_log", "Add Log Entry"),
+        ("r", "edit_log", "Edit Entry"),
+    ]
+
+    def __init__(self, project_name: str):
+        super().__init__()
+        self.project_name = project_name
+        self.expanded_logs: set[str] = set()
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="top-bar"):
+            status = SystemStatus()
+            status.border_title = f" {self.project_name} LOG "
+            yield status
+        yield DataTable(id="log-table", cursor_type="row")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        color = getattr(self.app, "app_border", "#00FF00")
+        
+        status = self.query_one(SystemStatus)
+        status.styles.border = ("round", color)
+        status.styles.border_title_color = color
+        
+        dt = self.query_one(DataTable)
+        dt.styles.border = ("round", color)
+        
+        self.populate_table()
+
+    def populate_table(self) -> None:
+        table = self.query_one(DataTable)
+        
+        cursor_key = None
+        if table.row_count > 0:
+            try:
+                cursor_key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+            except Exception:
+                pass
+
+        table.clear(columns=False)
+        if not table.columns:
+            table.add_columns("DATE", "TITLE")
+        
+        logs = db_get_project_logs(self.project_name)
+        
+        for log in logs:
+            row_key = f"log::{log['id']}"
+            indicator = "[bold cyan]▼[/] " if row_key in self.expanded_logs else "[bold white]▶[/] "
+            
+            table.add_row(
+                f"{indicator}[bold cyan]{log['log_date']}[/]",
+                f"[bold white]{log['title']}[/]",
+                key=row_key
+            )
+            
+            if row_key in self.expanded_logs:
+                note_key = f"note::{log['id']}"
+                table.add_row(
+                    "", 
+                    f"[gray]↳[/] {log['notes']}", 
+                    key=note_key
+                )
+
+        if cursor_key:
+            try:
+                row_idx = table.get_row_index(cursor_key)
+                table.move_cursor(row=row_idx)
+            except Exception:
+                pass
+
+    @on(DataTable.RowSelected)
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        row_key_str = str(event.row_key.value)
+        
+        # Parse the ID whether they pressed Enter on the primary row or the expanded note row
+        log_id_str = row_key_str.split("::")[1] if "::" in row_key_str else None
+        
+        if not log_id_str:
+            return
+            
+        log_id = int(log_id_str)
+        log_data = db_get_log_by_id(log_id)
+        
+        if log_data:
+            self.app.push_screen(LogDetailScreen(log_data))
+
+    def action_add_log(self) -> None:
+        self.app.push_screen(LogFormScreen(), self.handle_log_form)
+
+    def action_edit_log(self) -> None:
+        table = self.query_one(DataTable)
+        if not table.row_count:
+            self.app.notify("No logs to edit.", severity="warning")
+            return
+        
+        try:
+            row_key_value = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+        except Exception:
+            return
+
+        key = str(row_key_value)
+        # Parse the ID whether they have selected the primary row or the expanded notes row
+        log_id_str = key.split("::")[1] if "::" in key else None
+        
+        if not log_id_str:
+            return
+            
+        log_id = int(log_id_str)
+        log_data = db_get_log_by_id(log_id)
+        if log_data:
+            self.app.push_screen(LogFormScreen(log_data), self.handle_log_form)
+
+    def handle_log_form(self, result: dict | None) -> None:
+        if not result:
+            return
+        
+        action = result.get("action")
+        log_id = result.get("id")
+        
+        if action == "save":
+            if log_id:
+                db_update_project_log(log_id, result["date"], result["title"], result["notes"])
+                self.app.notify("Log entry updated.", severity="information")
+            else:
+                db_add_project_log(self.project_name, result["date"], result["title"], result["notes"])
+                self.app.notify("Log entry added.", severity="information")
+                
+        elif action == "delete":
+            if log_id:
+                db_delete_project_log(log_id)
+                self.expanded_logs.discard(f"log::{log_id}")
+                self.app.notify("Log entry deleted.", severity="warning")
+        
+        self.populate_table()
 
 # ---------------------------------------------------------------------------
 # MAIN APP
@@ -744,9 +1067,13 @@ class TaskManagerApp(App):
     SystemStatus { width: 100%; height: 100%; border: round #00ff00; border-title-color: #00ff00; content-align: center middle; }
     DataTable { border: round #00ff00; height: 1fr; }
 
-    ConfirmScreen, TaskFormScreen, ViewFilterScreen, ProjectManagerScreen, PreferencesScreen {
+    ConfirmScreen, TaskFormScreen, ViewFilterScreen, ProjectManagerScreen, PreferencesScreen, LogProjectSelectScreen, LogFormScreen, LogDetailScreen {
         align: center middle;
         background: $background 50%;
+    }
+    
+    LogFormScreen #dialog, LogDetailScreen #dialog {
+        width: 150;
     }
     #dialog {
         width: 60;
@@ -769,7 +1096,8 @@ class TaskManagerApp(App):
         ("d", "delete_task", "Delete Task"),
         ("v", "view_filter", "View/Filter"),
         ("h", "toggle_hide_done", "Hide Done"),
-        ("p", "open_preferences", "Preferences"), # NEW BINDING
+        ("p", "open_preferences", "Preferences"),
+        ("l", "open_project_log", "Project Log"),
         ("q", "app.quit", "Quit"),
     ]
 
@@ -778,25 +1106,18 @@ class TaskManagerApp(App):
 
     def watch_app_border(self, new_color: str) -> None:
         """Fires automatically whenever app_border changes."""
-        # 1. Force update the main UI elements
-        try:
-            status = self.query_one(SystemStatus)
+        # Update all active widgets that require the border color globally
+        for status in self.query(SystemStatus):
             status.styles.border = ("round", new_color)
             status.styles.border_title_color = new_color
             
-            dt = self.query_one(DataTable)
+        for dt in self.query(DataTable):
             dt.styles.border = ("round", new_color)
-        except Exception:
-            pass
 
-        # 2. Instantly update the dialog box if a menu is currently open
-        try:
-            dialog = self.query_one("#dialog")
+        for dialog in self.query("#dialog"):
             dialog.styles.border = ("heavy", new_color)
-        except Exception:
-            pass
 
-        # 3. Save to database
+        # Save to database
         if hasattr(self, "data") and "view_settings" in self.data:
             self.data["view_settings"]["border_color"] = new_color
             db_save_view_settings(self.data["view_settings"])
@@ -835,7 +1156,7 @@ class TaskManagerApp(App):
         yield Footer()
 
     # ------------------------------------------------------------------
-    # Table rendering (logic identical to original; keys now use DB ids)
+    # Table rendering
     # ------------------------------------------------------------------
 
     def populate_table(self) -> None:
@@ -1085,7 +1406,6 @@ class TaskManagerApp(App):
         proj = self.get_project_for_task(task_id)
 
         if sub_id is not None:
-            # Find sub_task data from in-memory cache
             with get_conn() as conn:
                 row = conn.execute("SELECT * FROM sub_tasks WHERE id=?", (sub_id,)).fetchone()
             if row:
@@ -1197,6 +1517,18 @@ class TaskManagerApp(App):
             self.app_border = new_color
             self.notify("UI PARAMETERS OVERRIDDEN.", severity="information")
 
+    # --- Log Project ----------------------------------------------------
+
+    def action_open_project_log(self) -> None:
+        projects = list(self.data["projects"].keys())
+        if not projects:
+            self.notify("NO PROJECTS DETECTED.", severity="error")
+            return
+        self.push_screen(LogProjectSelectScreen(projects), self.handle_log_project_select)
+
+    def handle_log_project_select(self, project: str | None) -> None:
+        if project:
+            self.push_screen(ProjectLogScreen(project))
 
 # ---------------------------------------------------------------------------
 # ENTRY POINT
@@ -1204,6 +1536,7 @@ class TaskManagerApp(App):
 
 if __name__ == "__main__":
     init_db()
+    upgrade_project_logs_table() # Safely ensure older DBs get the Title column
     migrate_from_json()   # no-op if tasks.json doesn't exist or already migrated
     app = TaskManagerApp()
     app.run()
