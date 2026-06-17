@@ -11,6 +11,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Static, Input, Select, Button, Label, TextArea
+from textual.binding import Binding
 
 DB_FILE = "tasks.db"
 
@@ -343,9 +344,11 @@ def db_update_project_log(log_id: int, log_date: str, title: str, notes: str) ->
             (log_date, title, notes, log_id)
         )
 
+
 def db_delete_project_log(log_id: int) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM project_logs WHERE id=?", (log_id,))
+
 
 def db_get_log_by_id(log_id: int) -> dict | None:
     with get_conn() as conn:
@@ -428,6 +431,7 @@ class ConfirmScreen(ModalScreen[bool]):
             self.query_one("#dialog").styles.border = ("heavy", color)
         except Exception:
             pass
+
 
 class TaskFormScreen(ModalScreen[dict]):
     BINDINGS = [("escape", "cancel", "Cancel")]
@@ -564,6 +568,7 @@ class TaskFormScreen(ModalScreen[dict]):
         except Exception:
             pass
 
+
 class ViewFilterScreen(ModalScreen[dict]):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
@@ -633,6 +638,7 @@ class ViewFilterScreen(ModalScreen[dict]):
             self.query_one("#dialog").styles.border = ("heavy", color)
         except Exception:
             pass
+
 
 class ProjectManagerScreen(ModalScreen[dict]):
     BINDINGS = [("escape", "cancel", "Cancel")]
@@ -722,6 +728,7 @@ class ProjectManagerScreen(ModalScreen[dict]):
         except Exception:
             pass
 
+
 class PreferencesScreen(ModalScreen[str]):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
@@ -777,6 +784,7 @@ class PreferencesScreen(ModalScreen[str]):
         except Exception:
             pass
 
+
 class LogDetailScreen(ModalScreen[None]):
     BINDINGS = [
         ("escape", "close", "Close"), 
@@ -811,6 +819,49 @@ class LogDetailScreen(ModalScreen[None]):
             self.query_one("#dialog").styles.border = ("heavy", color)
         except Exception:
             pass
+
+
+class HelpScreen(ModalScreen[None]):
+    BINDINGS = [
+        ("escape", "close", "Close"),
+        ("?", "close", "Close")
+    ]
+
+    def __init__(self, bindings_list: list[tuple[str, str]]):
+        super().__init__()
+        self.bindings_list = bindings_list
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="help-dialog"):
+            yield Label("[bold cyan]KEYBOARD SHORTCUTS[/]", id="dialog-title")
+            
+            dt = DataTable(id="help-table")
+            dt.show_header = False
+            yield dt
+            
+            with Horizontal(id="dialog-buttons"):
+                yield Button("CLOSE", variant="primary", id="btn-close")
+
+    def on_mount(self) -> None:
+        color = getattr(self.app, "app_border", "#00ff00")
+        try:
+            self.query_one("#help-dialog").styles.border = ("heavy", color)
+        except Exception:
+            pass
+            
+        table = self.query_one(DataTable)
+        table.add_columns("KEY", "ACTION")
+        
+        for key, desc in self.bindings_list:
+            table.add_row(f"[bold cyan]{key.upper()}[/]", desc)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-close":
+            self.dismiss(None)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
 # ---------------------------------------------------------------------------
 # LOG SCREENS 
 # ---------------------------------------------------------------------------
@@ -848,6 +899,7 @@ class LogProjectSelectScreen(ModalScreen[str]):
             self.query_one("#dialog").styles.border = ("heavy", color)
         except Exception:
             pass
+
 
 class LogFormScreen(ModalScreen[dict]):
     BINDINGS = [("escape", "cancel", "Cancel")]
@@ -918,11 +970,13 @@ class LogFormScreen(ModalScreen[dict]):
         except Exception:
             pass
 
+
 class ProjectLogScreen(Screen):
     BINDINGS = [
-        ("escape", "app.pop_screen", "Back to Tasks"),
-        ("a", "add_log", "Add Log Entry"),
-        ("r", "edit_log", "Edit Entry"),
+        Binding("escape", "app.pop_screen", "Back to Tasks", show=False),
+        Binding("a", "add_log", "Add Log Entry", show=False),
+        Binding("r", "edit_log", "Edit Entry", show=False),
+        Binding("?", "show_help", "Shortcuts"), # Remains visible in Footer
     ]
 
     def __init__(self, project_name: str):
@@ -1056,6 +1110,21 @@ class ProjectLogScreen(Screen):
         
         self.populate_table()
 
+    def action_show_help(self) -> None:
+        app_binds = [("q", "Quit"), ("p", "Preferences")]
+        screen_binds = []
+        
+        for b in self.BINDINGS:
+            if isinstance(b, tuple):
+                key = b[0]
+                # Fallback to the action name if no description is provided
+                desc = b[2] if len(b) == 3 else str(b[1])
+                screen_binds.append((key, desc))
+            else:
+                screen_binds.append((b.key, b.description))
+                
+        self.app.push_screen(HelpScreen(screen_binds + app_binds))
+
 # ---------------------------------------------------------------------------
 # MAIN APP
 # ---------------------------------------------------------------------------
@@ -1067,18 +1136,18 @@ class TaskManagerApp(App):
     SystemStatus { width: 100%; height: 100%; border: round #00ff00; border-title-color: #00ff00; content-align: center middle; }
     DataTable { border: round #00ff00; height: 1fr; }
 
-    ConfirmScreen, TaskFormScreen, ViewFilterScreen, ProjectManagerScreen, PreferencesScreen, LogProjectSelectScreen, LogFormScreen, LogDetailScreen {
+    ConfirmScreen, TaskFormScreen, ViewFilterScreen, ProjectManagerScreen, PreferencesScreen, LogProjectSelectScreen, LogFormScreen, LogDetailScreen, HelpScreen {
         align: center middle;
         background: $background 50%;
     }
     
     LogFormScreen #dialog, LogDetailScreen #dialog {
-        width: 150;
+        width: 120;
     }
-    #dialog {
-        width: 60;
+    
+    #help-dialog {
+        width: 40;
         height: auto;
-        max-height: 90vh;
         padding: 1 2;
         background: $surface;
         border: heavy #00ff00;
@@ -1089,16 +1158,17 @@ class TaskManagerApp(App):
     """
 
     BINDINGS = [
-        ("1", "manage_projects", "Projects"),
-        ("2", "add_task", "Add Task"),
-        ("s", "add_subtask", "Add Sub-task"),
-        ("e", "edit_task", "Edit Task"),
-        ("d", "delete_task", "Delete Task"),
-        ("v", "view_filter", "View/Filter"),
-        ("h", "toggle_hide_done", "Hide Done"),
-        ("p", "open_preferences", "Preferences"),
-        ("l", "open_project_log", "Project Log"),
-        ("q", "app.quit", "Quit"),
+        Binding("1", "manage_projects", "Projects", show=False),
+        Binding("2", "add_task", "Add Task", show=False),
+        Binding("s", "add_subtask", "Add Sub-task", show=False),
+        Binding("e", "edit_task", "Edit Task", show=False),
+        Binding("d", "delete_task", "Delete Task", show=False),
+        Binding("v", "view_filter", "View/Filter", show=False),
+        Binding("h", "toggle_hide_done", "Hide Done", show=False),
+        Binding("p", "open_preferences", "Preferences", show=False),
+        Binding("l", "open_project_log", "Project Log", show=False),
+        Binding("?", "show_help", "Shortcuts"), # Remains visible in Footer
+        Binding("q", "app.quit", "Quit"),       # Remains visible in Footer
     ]
 
     # Reactive variable for dynamic styling
@@ -1122,6 +1192,19 @@ class TaskManagerApp(App):
             self.data["view_settings"]["border_color"] = new_color
             db_save_view_settings(self.data["view_settings"])
 
+
+    def action_show_help(self) -> None:
+        bindings_list = []
+        for b in self.BINDINGS:
+            if isinstance(b, tuple):
+                key = b[0]
+                # Fallback to the action name if no description is provided
+                desc = b[2] if len(b) == 3 else str(b[1]) 
+                bindings_list.append((key, desc))
+            else:
+                bindings_list.append((b.key, b.description))
+                
+        self.push_screen(HelpScreen(bindings_list))
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -1529,6 +1612,7 @@ class TaskManagerApp(App):
     def handle_log_project_select(self, project: str | None) -> None:
         if project:
             self.push_screen(ProjectLogScreen(project))
+
 
 # ---------------------------------------------------------------------------
 # ENTRY POINT
