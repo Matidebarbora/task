@@ -23,13 +23,12 @@ DB_FILE = "tasks.db"
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")   # safer concurrent writes
+    conn.execute("PRAGMA journal_mode=WAL")   
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
 def init_db() -> None:
-    """Create tables if they don't exist yet."""
     with get_conn() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS projects (
@@ -69,7 +68,6 @@ def init_db() -> None:
                 notes       TEXT NOT NULL
             );
         """)
-        # Seed default view settings if missing
         defaults = {
             "sort_by": "priority",
             "filter_project": "",
@@ -77,6 +75,7 @@ def init_db() -> None:
             "theme": "textual-dark",
             "hide_done": "0",
             "border_color": "#00FF00",
+            "bg_color": "",
         }
         for k, v in defaults.items():
             conn.execute(
@@ -85,18 +84,14 @@ def init_db() -> None:
 
 
 def upgrade_project_logs_table() -> None:
-    """Run this once on startup to ensure the title column exists for older DB versions."""
     with get_conn() as conn:
         try:
             conn.execute("ALTER TABLE project_logs ADD COLUMN title TEXT NOT NULL DEFAULT 'Milestone'")
         except sqlite3.OperationalError:
-            pass # Column already exists
+            pass 
 
-
-# --- Migration helper ---------------------------------------------------
 
 def migrate_from_json(json_path: str = "tasks.json") -> None:
-    """One-time import of an existing tasks.json into the SQLite DB."""
     if not os.path.exists(json_path):
         return
 
@@ -104,10 +99,9 @@ def migrate_from_json(json_path: str = "tasks.json") -> None:
         data = json.load(f)
 
     with get_conn() as conn:
-        # Check if DB is already populated
         row = conn.execute("SELECT COUNT(*) FROM projects").fetchone()
         if row[0] > 0:
-            return   # already migrated
+            return 
 
         colors = data.get("project_colors", {})
         for proj_name, tasks in data.get("projects", {}).items():
@@ -156,21 +150,14 @@ def migrate_from_json(json_path: str = "tasks.json") -> None:
                 "INSERT OR REPLACE INTO view_settings (key, value) VALUES (?, ?)", (k, v)
             )
 
-    # Rename the old file so migration won't re-run
     os.rename(json_path, json_path + ".bak")
-    print(f"[migration] tasks.json imported → {DB_FILE}  (backup: tasks.json.bak)")
 
-
-# --- High-level DB helpers ----------------------------------------------
 
 def db_load_data() -> dict:
-    """Return the same dict shape the rest of the app expects."""
     with get_conn() as conn:
-        # Projects + their color
         proj_rows = conn.execute("SELECT name, color FROM projects ORDER BY name").fetchall()
         project_colors = {r["name"]: r["color"] for r in proj_rows}
 
-        # Tasks (with sub-tasks) per project
         projects: dict[str, list] = {r["name"]: [] for r in proj_rows}
 
         task_rows = conn.execute(
@@ -205,7 +192,6 @@ def db_load_data() -> dict:
                 "_id": t["id"],
             })
 
-        # View settings
         vs_rows = conn.execute("SELECT key, value FROM view_settings").fetchall()
         vs = {r["key"]: r["value"] for r in vs_rows}
 
@@ -216,6 +202,7 @@ def db_load_data() -> dict:
             "theme": vs.get("theme", "textual-dark"),
             "hide_done": vs.get("hide_done", "0") == "1",
             "border_color": vs.get("border_color", "#00FF00"),
+            "bg_color": vs.get("bg_color", ""),
         }
 
     return {
@@ -233,6 +220,7 @@ def db_save_view_settings(vs: dict) -> None:
         "theme": vs.get("theme", "textual-dark"),
         "hide_done": "1" if vs.get("hide_done") else "0",
         "border_color": vs.get("border_color", "#00FF00"),
+        "bg_color": vs.get("bg_color", ""),
     }
     with get_conn() as conn:
         for k, v in mapping.items():
@@ -256,7 +244,6 @@ def db_edit_project(old_name: str, new_name: str | None, new_color: str | None) 
             if new_color:
                 conn.execute("UPDATE projects SET color=? WHERE name=?", (new_color, old_name))
             if new_name and new_name != old_name:
-                # Rename: tasks.project FK will cascade via ON UPDATE CASCADE
                 conn.execute(
                     "UPDATE projects SET name=? WHERE name=?", (new_name, old_name)
                 )
@@ -361,7 +348,7 @@ def db_get_log_by_id(log_id: int) -> dict | None:
         return None
 
 # ---------------------------------------------------------------------------
-# UI COMPONENTS  (unchanged from original)
+# UI COMPONENTS  
 # ---------------------------------------------------------------------------
 
 class SystemStatus(Static):
@@ -427,8 +414,12 @@ class ConfirmScreen(ModalScreen[bool]):
 
     def on_mount(self) -> None:
         color = getattr(self.app, "app_border", "#00ff00")
+        bg_color = getattr(self.app, "app_bg", "")
         try:
-            self.query_one("#dialog").styles.border = ("heavy", color)
+            dialog = self.query_one("#dialog")
+            dialog.styles.border = ("heavy", color)
+            if bg_color:
+                dialog.styles.background = bg_color
         except Exception:
             pass
 
@@ -563,8 +554,12 @@ class TaskFormScreen(ModalScreen[dict]):
 
     def on_mount(self) -> None:
         color = getattr(self.app, "app_border", "#00ff00")
+        bg_color = getattr(self.app, "app_bg", "")
         try:
-            self.query_one("#dialog").styles.border = ("heavy", color)
+            dialog = self.query_one("#dialog")
+            dialog.styles.border = ("heavy", color)
+            if bg_color:
+                dialog.styles.background = bg_color
         except Exception:
             pass
 
@@ -634,8 +629,12 @@ class ViewFilterScreen(ModalScreen[dict]):
 
     def on_mount(self) -> None:
         color = getattr(self.app, "app_border", "#00ff00")
+        bg_color = getattr(self.app, "app_bg", "")
         try:
-            self.query_one("#dialog").styles.border = ("heavy", color)
+            dialog = self.query_one("#dialog")
+            dialog.styles.border = ("heavy", color)
+            if bg_color:
+                dialog.styles.background = bg_color
         except Exception:
             pass
 
@@ -723,21 +722,26 @@ class ProjectManagerScreen(ModalScreen[dict]):
 
     def on_mount(self) -> None:
         color = getattr(self.app, "app_border", "#00ff00")
+        bg_color = getattr(self.app, "app_bg", "")
         try:
-            self.query_one("#dialog").styles.border = ("heavy", color)
+            dialog = self.query_one("#dialog")
+            dialog.styles.border = ("heavy", color)
+            if bg_color:
+                dialog.styles.background = bg_color
         except Exception:
             pass
 
 
-class PreferencesScreen(ModalScreen[str]):
+class PreferencesScreen(ModalScreen[dict]):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
-    def __init__(self, current_color: str):
+    def __init__(self, current_border: str, current_bg: str):
         super().__init__()
-        self.current_color = current_color
+        self.current_border = current_border
+        self.current_bg = current_bg
 
     def compose(self) -> ComposeResult:
-        color_palette = {
+        border_palette = {
             "GREEN (Default)": "#00FF00",
             "CYAN": "#00FFFF",
             "MAGENTA": "#FF00FF",
@@ -749,38 +753,71 @@ class PreferencesScreen(ModalScreen[str]):
             "VIOLET": "#EE82EE",
         }
         
-        color_opts = [
+        border_opts = [
             (f"[{hex_code} bold]{name}[/]", hex_code)
-            for name, hex_code in color_palette.items()
+            for name, hex_code in border_palette.items()
         ]
+
+        bg_palette = {
+            "DEFAULT (Theme)": "",
+            "TRANSPARENT": "transparent",
+            "LAZYGIT DARK": "#242424",
+            "LAZYGIT BLUE": "#1e252c",
+            "PURE BLACK": "#000000",
+            "DEEP NAVY": "#000040",
+            "UBUNTU PLUM": "#300a24",
+        }
+
+        bg_opts = []
+        for name, hex_code in bg_palette.items():
+            if hex_code == "transparent":
+                bg_opts.append((f"[#ffffff on transparent] {name} [/]", hex_code))
+            else:
+                bg_opts.append((f"[{hex_code or '#ffffff'} on {hex_code or 'transparent'}] {name} [/]", hex_code))
 
         with Vertical(id="dialog"):
             yield Label("[bold cyan]APP PREFERENCES[/bold cyan]", id="dialog-title")
+            
             yield Label("Border Color:")
             yield Select(
-                color_opts,
+                border_opts,
                 id="select-border-color",
-                value=self.current_color,
+                value=self.current_border,
                 prompt="Select border color...",
             )
+
+            yield Label("Background Color:")
+            yield Select(
+                bg_opts,
+                id="select-bg-color",
+                value=self.current_bg,
+                prompt="Select background color...",
+            )
+
             with Horizontal(id="dialog-buttons"):
                 yield Button("APPLY", variant="success", id="btn-apply")
                 yield Button("CANCEL", variant="error", id="btn-cancel")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-apply":
-            color = self.query_one("#select-border-color", Select).value
-            if color == Select.BLANK:
-                self.dismiss(None)
-            else:
-                self.dismiss(str(color)) 
+            b_color = self.query_one("#select-border-color", Select).value
+            bg_color = self.query_one("#select-bg-color", Select).value
+            
+            self.dismiss({
+                "border": str(b_color) if b_color != Select.BLANK else self.current_border,
+                "bg": str(bg_color) if bg_color != Select.BLANK else ""
+            }) 
         elif event.button.id == "btn-cancel":
             self.dismiss(None)
 
     def on_mount(self) -> None:
         color = getattr(self.app, "app_border", "#00ff00")
+        bg_color = getattr(self.app, "app_bg", "")
         try:
-            self.query_one("#dialog").styles.border = ("heavy", color)
+            dialog = self.query_one("#dialog")
+            dialog.styles.border = ("heavy", color)
+            if bg_color:
+                dialog.styles.background = bg_color
         except Exception:
             pass
 
@@ -800,7 +837,7 @@ class LogDetailScreen(ModalScreen[None]):
             yield Label(f"[bold cyan]{self.log_data['log_date']} - {self.log_data['title']}[/]", id="dialog-title")
             
             notes_area = TextArea(text=self.log_data.get("notes", ""), read_only=True)
-            notes_area.styles.height = 25
+            notes_area.styles.height = "1fr" 
             yield notes_area
             
             with Horizontal(id="dialog-buttons"):
@@ -815,8 +852,12 @@ class LogDetailScreen(ModalScreen[None]):
 
     def on_mount(self) -> None:
         color = getattr(self.app, "app_border", "#00ff00")
+        bg_color = getattr(self.app, "app_bg", "")
         try:
-            self.query_one("#dialog").styles.border = ("heavy", color)
+            dialog = self.query_one("#dialog")
+            dialog.styles.border = ("heavy", color)
+            if bg_color:
+                dialog.styles.background = bg_color
         except Exception:
             pass
 
@@ -844,8 +885,14 @@ class HelpScreen(ModalScreen[None]):
 
     def on_mount(self) -> None:
         color = getattr(self.app, "app_border", "#00ff00")
+        bg_color = getattr(self.app, "app_bg", "")
         try:
-            self.query_one("#help-dialog").styles.border = ("heavy", color)
+            dialog = self.query_one("#help-dialog")
+            dialog.styles.border = ("heavy", color)
+            if bg_color:
+                dialog.styles.background = bg_color
+                
+            self.query_one("#help-table").styles.border = ("round", color)
         except Exception:
             pass
             
@@ -895,8 +942,12 @@ class LogProjectSelectScreen(ModalScreen[str]):
 
     def on_mount(self) -> None:
         color = getattr(self.app, "app_border", "#00ff00")
+        bg_color = getattr(self.app, "app_bg", "")
         try:
-            self.query_one("#dialog").styles.border = ("heavy", color)
+            dialog = self.query_one("#dialog")
+            dialog.styles.border = ("heavy", color)
+            if bg_color:
+                dialog.styles.background = bg_color
         except Exception:
             pass
 
@@ -965,8 +1016,12 @@ class LogFormScreen(ModalScreen[dict]):
 
     def on_mount(self) -> None:
         color = getattr(self.app, "app_border", "#00ff00")
+        bg_color = getattr(self.app, "app_bg", "")
         try:
-            self.query_one("#dialog").styles.border = ("heavy", color)
+            dialog = self.query_one("#dialog")
+            dialog.styles.border = ("heavy", color)
+            if bg_color:
+                dialog.styles.background = bg_color
         except Exception:
             pass
 
@@ -976,7 +1031,7 @@ class ProjectLogScreen(Screen):
         Binding("escape", "app.pop_screen", "Back to Tasks", show=False),
         Binding("a", "add_log", "Add Log Entry", show=False),
         Binding("r", "edit_log", "Edit Entry", show=False),
-        Binding("?", "show_help", "Shortcuts"), # Remains visible in Footer
+        Binding("?", "show_help", "Shortcuts"), 
     ]
 
     def __init__(self, project_name: str):
@@ -1049,7 +1104,6 @@ class ProjectLogScreen(Screen):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         row_key_str = str(event.row_key.value)
         
-        # Parse the ID whether they pressed Enter on the primary row or the expanded note row
         log_id_str = row_key_str.split("::")[1] if "::" in row_key_str else None
         
         if not log_id_str:
@@ -1076,7 +1130,6 @@ class ProjectLogScreen(Screen):
             return
 
         key = str(row_key_value)
-        # Parse the ID whether they have selected the primary row or the expanded notes row
         log_id_str = key.split("::")[1] if "::" in key else None
         
         if not log_id_str:
@@ -1117,7 +1170,6 @@ class ProjectLogScreen(Screen):
         for b in self.BINDINGS:
             if isinstance(b, tuple):
                 key = b[0]
-                # Fallback to the action name if no description is provided
                 desc = b[2] if len(b) == 3 else str(b[1])
                 screen_binds.append((key, desc))
             else:
@@ -1131,27 +1183,63 @@ class ProjectLogScreen(Screen):
 
 class TaskManagerApp(App):
     CSS = """
-    Screen { background: $surface; }
-    #top-bar { height: 3; margin-bottom: 0; }
-    SystemStatus { width: 100%; height: 100%; border: round #00ff00; border-title-color: #00ff00; content-align: center middle; }
-    DataTable { border: round #00ff00; height: 1fr; }
+    Screen { background: transparent; }
+    
+    /* Force the top bar and any text widgets inside it to be completely transparent */
+    #top-bar { 
+        height: 3; 
+        margin-bottom: 0; 
+        background: transparent; 
+    }
+    #top-bar Static {
+        background: transparent;
+    }
+    
+    /* Make foundational widgets transparent so App background shows through */
+    SystemStatus { background: transparent; width: 100%; height: 100%; border: round #00ff00; border-title-color: #00ff00; content-align: center middle; }
+    DataTable { background: transparent; border: round #00ff00; height: 1fr; }
+
+    /* Catch-all for default Textual header components just in case */
+    Header, 
+    HeaderTitle, 
+    HeaderIcon, 
+    HeaderClock {
+        background: transparent;
+    }
 
     ConfirmScreen, TaskFormScreen, ViewFilterScreen, ProjectManagerScreen, PreferencesScreen, LogProjectSelectScreen, LogFormScreen, LogDetailScreen, HelpScreen {
         align: center middle;
-        background: $background 50%;
+        background: rgba(0, 0, 0, 0.6); /* Dimmed glass effect behind popups */
     }
     
-    LogFormScreen #dialog, LogDetailScreen #dialog {
-        width: 120;
+    #dialog, #help-dialog {
+        padding: 1 2;
+        background: transparent; /* Knock out the solid surface color for menus */
+        border: heavy #00ff00;
+    }
+
+    LogFormScreen #dialog {
+        width: 100;
+        height: auto;
+    }
+
+    /* Ratio locked down for a cleaner read layout */
+    LogDetailScreen #dialog {
+        width: 80;
+        height: 30; 
+    }
+
+    /* All specific settings/options dialogs share the 70 width */
+    TaskFormScreen #dialog, PreferencesScreen #dialog, ViewFilterScreen #dialog, ConfirmScreen #dialog, LogProjectSelectScreen #dialog {
+        width: 70;
+        height: auto;
     }
     
     #help-dialog {
-        width: 40;
+        width: 50;
         height: auto;
-        padding: 1 2;
-        background: $surface;
-        border: heavy #00ff00;
     }
+
     #dialog-title { content-align: center middle; width: 100%; margin-bottom: 1; }
     #dialog-buttons { margin-top: 1; align: center middle; height: auto; }
     #dialog-buttons Button { margin: 0 1; }
@@ -1167,16 +1255,14 @@ class TaskManagerApp(App):
         Binding("h", "toggle_hide_done", "Hide Done", show=False),
         Binding("p", "open_preferences", "Preferences", show=False),
         Binding("l", "open_project_log", "Project Log", show=False),
-        Binding("?", "show_help", "Shortcuts"), # Remains visible in Footer
-        Binding("q", "app.quit", "Quit"),       # Remains visible in Footer
+        Binding("?", "show_help", "Shortcuts"), 
+        Binding("q", "app.quit", "Quit"),       
     ]
 
-    # Reactive variable for dynamic styling
     app_border = reactive("#00FF00")
+    app_bg = reactive("")
 
     def watch_app_border(self, new_color: str) -> None:
-        """Fires automatically whenever app_border changes."""
-        # Update all active widgets that require the border color globally
         for status in self.query(SystemStatus):
             status.styles.border = ("round", new_color)
             status.styles.border_title_color = new_color
@@ -1187,18 +1273,33 @@ class TaskManagerApp(App):
         for dialog in self.query("#dialog"):
             dialog.styles.border = ("heavy", new_color)
 
-        # Save to database
+        for help_dialog in self.query("#help-dialog"):
+            help_dialog.styles.border = ("heavy", new_color)
+
         if hasattr(self, "data") and "view_settings" in self.data:
             self.data["view_settings"]["border_color"] = new_color
             db_save_view_settings(self.data["view_settings"])
 
+    def watch_app_bg(self, new_bg: str) -> None:
+        bg_val = new_bg or None
+        self.styles.background = bg_val
+        
+        # Override inner background of dialogs instantly upon preference swap
+        for dialog in self.query("#dialog, #help-dialog"):
+            if bg_val:
+                dialog.styles.background = bg_val
+            else:
+                dialog.styles.background = None 
+        
+        if hasattr(self, "data") and "view_settings" in self.data:
+            self.data["view_settings"]["bg_color"] = new_bg
+            db_save_view_settings(self.data["view_settings"])
 
     def action_show_help(self) -> None:
         bindings_list = []
         for b in self.BINDINGS:
             if isinstance(b, tuple):
                 key = b[0]
-                # Fallback to the action name if no description is provided
                 desc = b[2] if len(b) == 3 else str(b[1]) 
                 bindings_list.append((key, desc))
             else:
@@ -1219,9 +1320,11 @@ class TaskManagerApp(App):
         if "theme" in self.data.get("view_settings", {}):
             self.theme = self.data["view_settings"]["theme"]
             
-        # Load custom border color
         if "border_color" in self.data.get("view_settings", {}):
             self.app_border = self.data["view_settings"]["border_color"]
+
+        if "bg_color" in self.data.get("view_settings", {}):
+            self.app_bg = self.data["view_settings"]["bg_color"]
 
         self.populate_table()
 
@@ -1244,7 +1347,6 @@ class TaskManagerApp(App):
 
     def populate_table(self) -> None:
         self.data = db_load_data()
-        # Re-apply in-memory settings that may not be persisted yet
         self.data["view_settings"]["hide_done"] = self.hide_done
 
         table = self.query_one(DataTable)
@@ -1387,7 +1489,6 @@ class TaskManagerApp(App):
             return int(key.split("::")[1]), None
         if key.startswith("sub::"):
             sub_id = int(key.split("::")[1])
-            # Look up the parent task id from the DB
             with get_conn() as conn:
                 row = conn.execute("SELECT task_id FROM sub_tasks WHERE id=?", (sub_id,)).fetchone()
             if row:
@@ -1582,7 +1683,6 @@ class TaskManagerApp(App):
 
     def handle_view_filter(self, result: dict | None) -> None:
         if result:
-            # Preserve hide_done since ViewFilterScreen doesn't touch it
             result["hide_done"] = self.hide_done
             self.data["view_settings"].update(result)
             db_save_view_settings(self.data["view_settings"])
@@ -1592,12 +1692,14 @@ class TaskManagerApp(App):
     # --- Preferences ----------------------------------------------------
 
     def action_open_preferences(self) -> None:
-        current_color = self.data["view_settings"].get("border_color", "#00FF00")
-        self.push_screen(PreferencesScreen(current_color), self.handle_preferences)
+        current_border = self.data["view_settings"].get("border_color", "#00FF00")
+        current_bg = self.data["view_settings"].get("bg_color", "")
+        self.push_screen(PreferencesScreen(current_border, current_bg), self.handle_preferences)
 
-    def handle_preferences(self, new_color: str | None) -> None:
-        if new_color:
-            self.app_border = new_color
+    def handle_preferences(self, result: dict | None) -> None:
+        if result:
+            self.app_border = result["border"]
+            self.app_bg = result["bg"]
             self.notify("UI PARAMETERS OVERRIDDEN.", severity="information")
 
     # --- Log Project ----------------------------------------------------
@@ -1620,7 +1722,7 @@ class TaskManagerApp(App):
 
 if __name__ == "__main__":
     init_db()
-    upgrade_project_logs_table() # Safely ensure older DBs get the Title column
-    migrate_from_json()   # no-op if tasks.json doesn't exist or already migrated
+    upgrade_project_logs_table()
+    migrate_from_json()   
     app = TaskManagerApp()
     app.run()
