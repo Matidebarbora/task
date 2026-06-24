@@ -645,7 +645,7 @@ def _format_status(stat: str) -> str:
 # ENTRY POINT
 # ---------------------------------------------------------------------------
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 
 
 def _check_version() -> None:
