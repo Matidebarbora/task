@@ -167,6 +167,383 @@ class HelpScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+class UpdateGuideScreen(ModalScreen[None]):
+    BINDINGS = [
+        ("escape", "close", "Close"),
+        ("ctrl+u", "close", "Close"),
+    ]
+
+    GUIDE = """
+[bold cyan]╔══════════════════════════════════════════════════════╗
+║              TASKY — MANUAL DE USUARIO               ║
+╚══════════════════════════════════════════════════════╝[/]
+
+
+[bold yellow]━━━  ¿QUÉ ES TASKY?  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  Tasky es un gestor de tareas colaborativo que corre en
+  la terminal. Los datos se almacenan en [bold]SQLite local[/] para
+  máxima velocidad, y se sincronizan automáticamente con
+  [bold]Supabase[/] (PostgreSQL en la nube) para que todo el
+  equipo comparta la misma información.
+
+  · Las [bold]lecturas[/] siempre vienen de SQLite — instantáneas.
+  · Las [bold]ediciones y borrados[/] se aplican localmente y se
+    envían a Supabase en segundo plano.
+  · Los [bold]proyectos y tareas nuevos[/] van a Supabase primero
+    para obtener un ID único, luego se cachean localmente.
+  · Cada [bold]30 segundos[/] la app sincroniza en background para
+    mostrar cambios de otros usuarios.
+  · Si no hay conexión, podés editar y borrar igual; los
+    cambios llegarán a Supabase en cuanto se restablezca.
+
+
+[bold yellow]━━━  PRIMER ARRANQUE — SETUP WIZARD  ━━━━━━━━━━━━━━━━[/]
+
+  Al correr la app por primera vez aparece el [bold]Setup Wizard[/].
+  Pedirá cuatro datos:
+
+    · [bold]Supabase URL[/]      → La URL compartida del equipo.
+                         Ej: https://xxxx.supabase.co
+    · [bold]Supabase Anon Key[/] → La clave anon del proyecto.
+    · [bold]Username[/]          → Tu identificador (minúsculas,
+                         sin espacios). Ej: matias
+    · [bold]Display Name[/]      → Tu nombre visible. Ej: Matías DB
+
+  Al guardar, la app:
+    1. Verifica la conexión con Supabase.
+    2. Crea tu usuario en la tabla [dim]users[/] si no existe.
+    3. Guarda la configuración en [dim]~/.tasky/config.json[/].
+    4. Descarga todos los datos del equipo a SQLite local.
+
+  [dim]El Setup Wizard solo aparece una vez. Para cambiar credenciales,
+  editá manualmente ~/.tasky/config.json.[/]
+
+
+[bold yellow]━━━  USUARIOS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  No existe un panel de administración de usuarios.
+  Cada persona [bold]se registra sola[/] al correr la app por primera
+  vez en su máquina. Ese primer arranque:
+
+    · Pide sus datos (username, display name).
+    · Inserta su usuario en la tabla compartida [dim]users[/].
+    · A partir de ese momento aparece como opción en el
+      selector "Assigned To" del resto del equipo.
+
+  [bold]Importante:[/] un usuario tiene que haber hecho su setup al
+  menos una vez para que puedas asignarle tareas. Si intentás
+  asignar antes, no aparecerá en la lista.
+
+  [bold]Pasos para incorporar a un nuevo integrante:[/]
+
+    1. Compartirle la Supabase URL y la Anon Key del equipo.
+    2. Que clone el repo:  [bold]git clone <url-del-repo>[/]
+    3. Que instale deps:   [bold]pip install textual supabase[/]
+    4. Que corra la app:   [bold]python sqtask.py[/]
+    5. El Setup Wizard lo guía. Al terminar ya existe en el
+       sistema y cualquiera puede asignarle tareas.
+
+
+[bold yellow]━━━  PROYECTOS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  Los proyectos son el nivel más alto de organización.
+  Cada tarea pertenece a exactamente un proyecto.
+  Cada proyecto tiene un nombre único y un color.
+
+  Gestión de proyectos → [bold]ctrl+1[/]
+
+    · [bold]Crear[/]   → Escribí el nombre y elegí un color.
+    · [bold]Editar[/]  → Cambiá el nombre o el color de uno existente.
+    · [bold]Eliminar[/] → Borra el proyecto Y todas sus tareas
+                    (pide confirmación).
+
+  [dim]Los nombres de proyecto se guardan en mayúsculas.[/]
+
+
+[bold yellow]━━━  TAREAS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  [bold]Crear tarea[/]  → [bold]ctrl+2[/]
+  [bold]Editar tarea[/] → [bold]ctrl+e[/]  (con la fila seleccionada)
+  [bold]Borrar tarea[/] → [bold]ctrl+d[/]  (con la fila seleccionada)
+
+  Cada tarea tiene:
+
+    · [bold]Proyecto[/]    → A qué proyecto pertenece.
+    · [bold]Descripción[/] → El texto de la tarea.
+    · [bold]Prioridad[/]   → 1.HIGH / 2.MEDIUM / 3.LOW / 4.----
+    · [bold]Estado[/]      → TO DO / IN PROGRESS / ON HOLD / DONE
+    · [bold]Assigned To[/] → El usuario responsable (opcional).
+    · [bold]Notas[/]       → Texto libre adicional (opcional).
+
+  Las tareas nuevas se autoasignan al usuario actual.
+  Al editar, el responsable existente no cambia a menos
+  que lo modifiques explícitamente.
+
+  Si el estado se cambia a [bold]DONE[/], la prioridad pasa
+  automáticamente a [bold]4.----[/].
+
+
+[bold yellow]━━━  SUB-TAREAS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  Las sub-tareas son pasos dentro de una tarea principal.
+  No tienen prioridad ni asignado propio — heredan el del
+  padre para mostrar en pantalla.
+
+  [bold]Crear sub-tarea[/]  → [bold]ctrl+s[/]  (parado sobre una tarea)
+  [bold]Editar sub-tarea[/] → [bold]ctrl+e[/]  (parado sobre la sub-tarea)
+  [bold]Borrar sub-tarea[/] → [bold]ctrl+d[/]
+
+  Para ver las sub-tareas: [bold]Enter[/] sobre la tarea padre
+  (despliega ▶ / colapsa ▼). Las sub-tareas aparecen
+  indentadas debajo de su padre.
+
+  [dim]No se pueden anidar sub-tareas dentro de sub-tareas.[/]
+
+
+[bold yellow]━━━  ASIGNAR TAREAS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  Al crear o editar una tarea, el campo [bold]"Assigned To"[/]
+  muestra una lista con todos los usuarios registrados.
+
+  Para asignar:
+    1. Abrí el formulario de tarea ([bold]ctrl+2[/] o [bold]ctrl+e[/]).
+    2. Elegí un usuario en el selector "Assigned To".
+    3. Guardá.
+
+  Para ver solo tus tareas → [bold]ctrl+m[/]  (toggle MY TASKS)
+  Para mostrar/ocultar la columna ASSIGNED → [bold]ctrl+a[/]
+
+
+[bold yellow]━━━  ESTADOS Y PRIORIDADES  ━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  [bold]Prioridades[/] (orden de visualización):
+    [bold red]1. HIGH[/]    → Urgente
+    [bold yellow]2. MEDIUM[/]  → Normal
+    [cyan]3. LOW[/]     → Baja
+    [white]4. ----[/]    → Sin prioridad / completado
+
+  [bold]Estados[/]:
+    [white]TO DO[/]        → Pendiente
+    [bold cyan]IN PROGRESS[/] → En curso
+    [bold red]ON HOLD[/]     → Pausado / bloqueado
+    [bold green]DONE[/]        → Completado
+
+  Para ocultar tareas DONE → [bold]ctrl+h[/]  (toggle HIDE DONE)
+
+
+[bold yellow]━━━  FILTROS Y VISTA  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  [bold]ctrl+f[/] abre el panel de filtros:
+
+    · [bold]Ordenar por[/]       → PRIORITY (default) o PROJECT
+    · [bold]Filtrar proyecto[/]  → Mostrar solo un proyecto
+    · [bold]Filtrar prioridad[/] → Mostrar solo una prioridad
+
+  Los filtros se guardan en [dim]~/.tasky/config.json[/] y persisten
+  entre sesiones. Usá "CLEAR FILTERS" para resetearlos.
+
+  Otros toggles de vista:
+    [bold]ctrl+h[/] → Ocultar/mostrar tareas DONE
+    [bold]ctrl+m[/] → Solo mis tareas / todas
+    [bold]ctrl+a[/] → Mostrar/ocultar columna ASSIGNED
+
+
+[bold yellow]━━━  LOG DE PROYECTOS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  Cada proyecto tiene un registro histórico de hitos y notas.
+
+  Para abrirlo → [bold]ctrl+l[/]  (parado sobre cualquier tarea
+                       del proyecto)
+
+  Dentro del log:
+    [bold]ctrl+a[/]  → Agregar entrada  (fecha, título, notas)
+    [bold]ctrl+r[/]  → Editar/borrar la entrada seleccionada
+    [bold]Enter[/]   → Ver el detalle completo de una entrada
+    [bold]Escape[/]  → Volver a la lista de tareas
+
+  Las entradas se ordenan por fecha descendente.
+
+
+[bold yellow]━━━  PREFERENCIAS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  [bold]ctrl+p[/] abre las preferencias visuales:
+
+    · [bold]Color de borde[/]     → Color del marco de todos los paneles.
+    · [bold]Color de fondo[/]     → Fondo de la app (o tema por defecto).
+
+  Los cambios se aplican en tiempo real y se guardan en
+  [dim]~/.tasky/config.json[/].
+
+
+[bold yellow]━━━  ATAJOS DE TECLADO  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
+
+  [bold cyan]ctrl+1[/]   Gestionar proyectos
+  [bold cyan]ctrl+2[/]   Nueva tarea
+  [bold cyan]ctrl+s[/]   Nueva sub-tarea
+  [bold cyan]ctrl+e[/]   Editar tarea / sub-tarea seleccionada
+  [bold cyan]ctrl+d[/]   Eliminar tarea / sub-tarea seleccionada
+  [bold cyan]ctrl+f[/]   Filtros y vista
+  [bold cyan]ctrl+h[/]   Ocultar / mostrar tareas DONE
+  [bold cyan]ctrl+m[/]   Mis tareas / todas las tareas
+  [bold cyan]ctrl+a[/]   Mostrar / ocultar columna ASSIGNED
+  [bold cyan]ctrl+p[/]   Preferencias de interfaz
+  [bold cyan]ctrl+l[/]   Log del proyecto (desde una tarea)
+  [bold cyan]ctrl+u[/]   Este manual
+  [bold cyan]ctrl+q[/]   Salir
+  [bold cyan]?[/]        Referencia rápida de atajos
+  [bold cyan]Enter[/]    Expandir / colapsar sub-tareas
+
+
+[bold yellow]━━━  SINCRONIZACIÓN Y TRABAJO OFFLINE  ━━━━━━━━━━━━━━[/]
+
+  [bold]Al arrancar:[/]
+    · Si es el primer inicio (SQLite vacío): descarga todo
+      desde Supabase antes de mostrar la interfaz.
+    · En inicios posteriores: abre con los datos del caché
+      local y sincroniza con Supabase en segundo plano.
+
+  [bold]Durante el uso:[/]
+    · Cada 30 segundos se sincroniza en background.
+    · Ediciones y borrados se reflejan en pantalla al instante;
+      Supabase se actualiza en segundo plano.
+    · La creación de tareas/subtareas nuevas requiere conexión
+      (necesita el ID de Supabase).
+
+  [bold]Sin conexión:[/]
+    · La app abre y navega normalmente con los datos locales.
+    · Podés editar y borrar tareas existentes sin problema.
+    · Crear tareas nuevas fallará hasta recuperar conexión.
+
+
+[bold yellow]━━━  ACTUALIZAR LA APP — PARA USUARIOS  ━━━━━━━━━━━━[/]
+
+  Al abrir la app verás un aviso "UPDATE REQUIRED" si hay
+  una versión nueva disponible. Hacé esto en la carpeta
+  del proyecto:
+
+       [bold]git pull[/]
+       [bold]python sqtask.py[/]
+
+  [dim]Tus datos no se tocan: viven en Supabase y en tu SQLite
+  local (~/.tasky/tasky.db), no en los archivos del repo.[/]
+
+  Si [bold]git pull[/] falla por cambios locales accidentales:
+
+       [bold]git stash[/]
+       [bold]git pull[/]
+
+
+[bold yellow]━━━  ACTUALIZAR LA APP — PARA EL DESARROLLADOR  ━━━━[/]
+
+  Hay dos tipos de actualización según lo que cambiaste:
+    [bold]A)[/] Solo código Python (sin tocar tablas de Supabase).
+    [bold]B)[/] Código + cambios de schema (nueva columna, tabla, etc).
+
+  Seguí el flujo correspondiente:
+
+
+  [bold]── CASO A: solo cambios de código ──────────────────────[/]
+
+  [bold cyan]Paso 1[/] — Hacé los cambios en el código.
+
+  [bold cyan]Paso 2[/] — Subí el número de versión en [dim]app.py[/]:
+    Buscá la línea [bold]APP_VERSION = "x.x.x"[/] cerca del final
+    del archivo y cambiá el número. Ejemplo:
+         APP_VERSION = "1.0.0"  →  APP_VERSION = "1.1.0"
+    Usá versionado semántico: MAJOR.MINOR.PATCH.
+
+  [bold cyan]Paso 3[/] — Committeá y pusheá a GitHub:
+       [bold]git add .[/]
+       [bold]git commit -m "v1.1.0: descripción del cambio"[/]
+       [bold]git push[/]
+    [dim]Importante: pusheá PRIMERO. En el siguiente paso vas a
+    bloquear a los demás usuarios; si el código no está en
+    GitHub todavía, no van a poder actualizar.[/]
+
+  [bold cyan]Paso 4[/] — Registrá la nueva versión en Supabase.
+    Abrí el [bold]SQL Editor[/] de tu proyecto Supabase y ejecutá:
+       [bold]INSERT INTO app_version (version, notes)[/]
+       [bold]VALUES ('1.1.0', 'Descripción breve del cambio');[/]
+    Desde este momento, al abrir la app los demás verán el
+    aviso "UPDATE REQUIRED" y deberán hacer [bold]git pull[/].
+
+  ──────────────────────────────────────────────────────
+
+
+  [bold]── CASO B: cambios de código + cambios de schema ───────[/]
+
+  [bold cyan]Paso 1[/] — Hacé los cambios en el código Python.
+
+  [bold cyan]Paso 2[/] — Aplicá el cambio de schema en Supabase.
+    Abrí el [bold]SQL Editor[/] de Supabase y ejecutá el ALTER o
+    CREATE necesario. Ejemplos:
+       [bold]ALTER TABLE tasks ADD COLUMN etiqueta TEXT;[/]
+       [bold]CREATE TABLE nueva_tabla (...);[/]
+    [dim]Esto modifica la base de datos en vivo. Hacelo antes de
+    pushear el código que lo usa, para que si alguien abre
+    la app antes de actualizar no rompa nada.[/]
+
+  [bold cyan]Paso 3[/] — Actualizá [dim]supabase_schema.sql[/] en el repo para
+    que refleje el estado actual del schema. Este archivo
+    es solo documentación/referencia; no se ejecuta
+    automáticamente.
+
+  [bold cyan]Paso 4[/] — Si el cambio de schema afecta a [dim]local_db.py[/]
+    (nueva columna que hay que leer/escribir localmente),
+    actualizá las funciones correspondientes en ese archivo.
+    [dim]Nota: las tablas SQLite locales se recrean en cada
+    instalación nueva desde init_db(). Para usuarios
+    existentes, un cambio de columna requiere borrar
+    ~/.tasky/tasky.db para que se recree, o agregar la
+    columna manualmente.[/]
+
+  [bold cyan]Paso 5[/] — Subí el número de versión en [dim]app.py[/]:
+       APP_VERSION = "x.x.x"  →  APP_VERSION = "x.y.0"
+
+  [bold cyan]Paso 6[/] — Committeá y pusheá a GitHub:
+       [bold]git add .[/]
+       [bold]git commit -m "v1.2.0: descripción del cambio"[/]
+       [bold]git push[/]
+
+  [bold cyan]Paso 7[/] — Registrá la nueva versión en Supabase:
+       [bold]INSERT INTO app_version (version, notes)[/]
+       [bold]VALUES ('1.2.0', 'Descripción breve');[/]
+
+  ──────────────────────────────────────────────────────
+
+
+  [bold]── CHECKLIST RÁPIDO ────────────────────────────────────[/]
+
+  [dim]□[/] Cambié el código
+  [dim]□[/] (si aplica) Ejecuté el ALTER/CREATE en Supabase SQL Editor
+  [dim]□[/] (si aplica) Actualicé supabase_schema.sql
+  [dim]□[/] (si aplica) Actualicé local_db.py
+  [dim]□[/] Subí APP_VERSION en app.py
+  [dim]□[/] git push  ← ANTES de registrar en Supabase
+  [dim]□[/] INSERT INTO app_version en Supabase SQL Editor
+
+"""
+
+    def compose(self):
+        with Vertical(id="dialog"):
+            yield Label("[bold cyan]MANUAL DE USUARIO[/]", id="dialog-title")
+            with VerticalScroll():
+                yield Static(self.GUIDE)
+            with Horizontal(id="dialog-buttons"):
+                yield Button("CERRAR", variant="primary", id="btn-close")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-close":
+            self.dismiss(None)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+    def on_mount(self) -> None:
+        _apply_dialog_style(self)
+
+
 # ---------------------------------------------------------------------------
 # TASK / PROJECT MODALS
 # ---------------------------------------------------------------------------

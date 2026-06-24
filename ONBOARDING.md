@@ -91,11 +91,48 @@ cargan.
 
 ---
 
-## Actualizar la app más adelante
+## Cómo actualizar la app
 
-Si al iniciar aparece un aviso de versión nueva:
+Cuando se publica una versión nueva del programa, la próxima vez que lo abras
+**no va a arrancar** y en su lugar vas a ver un mensaje como este:
+
+```
+====================================================
+  TASKY — UPDATE REQUIRED
+====================================================
+  Tu versión     : 1.0.0
+  Versión actual : 1.1.0
+  Notas          : Qué cambió
+
+  Ejecutá:  git pull
+  Luego reiniciá la app.
+====================================================
+```
+
+Es normal: significa que hay una versión más nueva disponible. Para actualizar,
+parate en la carpeta del proyecto y ejecutá:
 
 ```bash
 git pull
 python sqtask.py
 ```
+
+`git pull` descarga la última versión desde GitHub y la app vuelve a abrir
+normalmente. Tus datos no se tocan — viven en Supabase, no en tu computadora.
+
+### Si `git pull` da error
+
+Lo más común es que tengas cambios locales sin querer (por ejemplo, tocaste un
+archivo sin darte cuenta). Para descartarlos y traer la versión limpia:
+
+```bash
+git stash
+git pull
+python sqtask.py
+```
+
+Si el problema persiste, avisale a Matías.
+
+> **Nota:** mientras Supabase esté disponible, la app solo bloquea si hay una
+> versión nueva de verdad. Si no hay internet o Supabase está caído, la app
+> arranca igual para no dejarte trabado.

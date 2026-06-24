@@ -28,7 +28,7 @@ SetupWizardScreen {
 }
 
 #app-title {
-    background: transparent;
+    background: #0a0f2e;
     width: 100%;
     height: 100%;
     border: round #00ff00;
@@ -56,7 +56,8 @@ ProjectManagerScreen,
 PreferencesScreen,
 LogFormScreen,
 LogDetailScreen,
-HelpScreen {
+HelpScreen,
+UpdateGuideScreen {
     align: center middle;
     background: rgba(0, 0, 0, 0.6);
 }
@@ -75,6 +76,11 @@ LogFormScreen #dialog {
 LogDetailScreen #dialog {
     width: 80;
     height: 30;
+}
+
+UpdateGuideScreen #dialog {
+    width: 80;
+    height: 40;
 }
 
 TaskFormScreen #dialog,

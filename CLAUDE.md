@@ -23,7 +23,8 @@ task/
 ├── sqtask.py              # Entry point (3-line wrapper)
 ├── app.py                 # TaskManagerApp + table rendering helpers + entry point
 ├── screens.py             # All Screen and ModalScreen classes
-├── db.py                  # All Supabase DB functions
+├── db.py                  # Public db_* API — routes reads to SQLite, writes to both
+├── local_db.py            # SQLite layer (~/.tasky/tasky.db)
 ├── config.py              # Local config file management (~/.tasky/config.json)
 ├── styles.tcss            # Textual CSS
 ├── supabase_schema.sql    # Run once in Supabase SQL Editor to create tables
@@ -32,11 +33,19 @@ task/
 
 ## Architecture
 
-### Backend: Supabase (PostgreSQL)
+### Hybrid local/remote storage
 
-All data lives in a shared Supabase project. Each user connects with the same `supabase_url` and `supabase_key`, stored locally in `~/.tasky/config.json`. The config also holds the user's `username`, `display_name`, and personal UI preferences (`view_settings`).
+The app uses **SQLite as the primary store** (`~/.tasky/tasky.db`) and **Supabase as the sync target and source of truth** for multi-user collaboration.
 
-`db.py` exposes a flat set of `db_*` functions. All of them call `get_client()`, which lazily initializes the Supabase client from the local config on first use. The rest of the app never touches the Supabase client directly.
+- **Reads** always come from local SQLite — instant, works offline.
+- **INSERT operations** (new task/subtask/project/log) go to Supabase first to obtain the canonical integer PK, then the row is written to SQLite.
+- **UPDATE and DELETE operations** write to SQLite immediately (the UI refreshes at once), then push to Supabase in a background thread.
+- **Startup sync**: on each launch, `sync_from_supabase()` pulls all tables from Supabase and replaces the local SQLite data. On first run (SQLite empty) this is blocking; on subsequent runs it happens in the background so the app opens instantly with the cached data.
+- **Periodic sync**: every 30 seconds a background thread re-syncs from Supabase and refreshes the table — picks up changes made by other users.
+
+`local_db.py` is the SQLite layer; `db.py` is the public `db_*` API that orchestrates both layers. The rest of the app only imports from `db.py`.
+
+Each user connects with the same `supabase_url` and `supabase_key`, stored locally in `~/.tasky/config.json`. The config also holds the user's `username`, `display_name`, and personal UI preferences (`view_settings`).
 
 ### Data model
 
@@ -96,12 +105,20 @@ The main DataTable encodes type and DB id into row keys:
 | `ctrl+f` | Filtros / vista |
 | `ctrl+h` | Ocultar/mostrar DONE |
 | `ctrl+m` | Mis tareas / todas |
+| `ctrl+a` | Ocultar/mostrar columna ASSIGNED |
 | `ctrl+p` | Preferencias |
 | `ctrl+l` | Log del proyecto (estando sobre una tarea) |
+| `ctrl+u` | Guía de actualización (in-app) |
 | `ctrl+q` | Salir |
 | `?` | Ayuda |
 
 **Log screen only:** `ctrl+a` agregar entrada, `ctrl+r` editar entrada, `escape` volver.
+
+Notas:
+- `ENABLE_COMMAND_PALETTE = False` en `TaskManagerApp` desactiva el command palette de Textual para liberar `ctrl+p`.
+- Las tareas nuevas se autoasignan al usuario actual (`action_add_task` pasa `task_data={"assigned_to": self.current_user}`). Editar una tarea respeta el responsable existente.
+- `hide_assigned` y `my_tasks_only` son estado en memoria (no persisten); `hide_done` y los colores sí persisten en el config local.
+- La columna ASSIGNED se agrega/quita recreando las columnas del DataTable (`table.clear(columns=True)`), por eso las filas se construyen con un número variable de valores.
 
 ## Adding a new user
 

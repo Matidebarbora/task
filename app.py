@@ -1,4 +1,5 @@
 import sys
+import threading
 
 from textual import on
 from textual.app import App, ComposeResult
@@ -34,12 +35,14 @@ from screens import (
     ProjectManagerScreen,
     SetupWizardScreen,
     TaskFormScreen,
+    UpdateGuideScreen,
     ViewFilterScreen,
 )
 
 
 class TaskManagerApp(App):
     CSS_PATH = "styles.tcss"
+    ENABLE_COMMAND_PALETTE = False  # libera ctrl+p para Preferences
 
     BINDINGS = [
         Binding("ctrl+1", "manage_projects", "Projects", show=False),
@@ -50,8 +53,10 @@ class TaskManagerApp(App):
         Binding("ctrl+f", "view_filter", "View/Filter", show=False),
         Binding("ctrl+h", "toggle_hide_done", "Hide Done", show=False),
         Binding("ctrl+m", "toggle_my_tasks", "My Tasks", show=False),
+        Binding("ctrl+a", "toggle_assigned_column", "Hide Assigned", show=False),
         Binding("ctrl+p", "open_preferences", "Preferences", show=False),
         Binding("ctrl+l", "open_project_log", "Project Log", show=False),
+        Binding("ctrl+u", "show_update_guide", "Manual", show=False),
         Binding("?", "show_help", "Shortcuts"),
         Binding("ctrl+q", "app.quit", "Quit"),
     ]
@@ -76,9 +81,22 @@ class TaskManagerApp(App):
             self.exit()
 
     def _initialize(self) -> None:
+        from local_db import init_db, has_local_data
+        from db import sync_from_supabase
+
+        init_db()
+
+        if not has_local_data():
+            # First run: block until we have data from Supabase.
+            sync_from_supabase()
+        else:
+            # Subsequent runs: show cached data immediately, sync in background.
+            threading.Thread(target=sync_from_supabase, daemon=True).start()
+
         cfg = load_config()
         self.current_user: str = cfg["username"]
         self.my_tasks_only: bool = False
+        self.hide_assigned: bool = True
 
         self.data = db_load_data()
         self.expanded_rows: set[str] = set()
@@ -94,6 +112,14 @@ class TaskManagerApp(App):
 
         self._update_header()
         self.populate_table()
+        self.set_interval(30, self._periodic_sync)
+
+    def _periodic_sync(self) -> None:
+        from db import sync_from_supabase
+        def _sync():
+            if sync_from_supabase():
+                self.call_from_thread(self.populate_table)
+        threading.Thread(target=_sync, daemon=True).start()
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="top-bar"):
@@ -167,9 +193,16 @@ class TaskManagerApp(App):
             except Exception:
                 pass
 
-        table.clear(columns=False)
-        if not table.columns:
-            table.add_columns("PROJECT", "PRIORITY", "TASK", "STATUS", "ASSIGNED", "NOTES")
+        # Recrear columnas solo si cambió el layout (evita glitches al expandir)
+        desired_cols = 5 if self.hide_assigned else 6
+        if len(table.columns) != desired_cols:
+            table.clear(columns=True)
+            if self.hide_assigned:
+                table.add_columns("PROJECT", "PRIORITY", "TASK", "STATUS", "NOTES")
+            else:
+                table.add_columns("PROJECT", "PRIORITY", "TASK", "STATUS", "ASSIGNED", "NOTES")
+        else:
+            table.clear(columns=False)
 
         view = self.data["view_settings"]
         all_tasks = [
@@ -190,7 +223,7 @@ class TaskManagerApp(App):
             prio_str = _format_priority(t["priority"])
             stat_str = _format_status(t["status"])
             assigned = t.get("assigned_to") or ""
-            assigned_str = f"[bold cyan]@{assigned}[/]" if assigned else "[gray]—[/]"
+            assigned_str = f"[dim white]@{assigned}[/]" if assigned else "[gray]—[/]"
 
             task_db_id = t["_id"]
             row_key = f"task::{task_db_id}"
@@ -202,23 +235,25 @@ class TaskManagerApp(App):
                 else "[bold white]▶[/] "
             ) if visible_subs else "  "
 
-            table.add_row(
-                proj_str, prio_str, f"{indicator}{t['task']}", stat_str,
-                assigned_str, t.get("notes", "") or "", key=row_key,
-            )
+            row_values = [proj_str, prio_str, f"{indicator}{t['task']}", stat_str]
+            if not self.hide_assigned:
+                row_values.append(assigned_str)
+            row_values.append(t.get("notes", "") or "")
+            table.add_row(*row_values, key=row_key)
 
             if row_key in self.expanded_rows:
                 for sub in sub_tasks:
                     if self.hide_done and sub.get("status") == "DONE":
                         continue
-                    table.add_row(
+                    sub_values = [
                         "", "",
                         f"    [gray]↳[/] {sub['task']}",
                         _format_status(sub.get("status", "TO DO")),
-                        assigned_str,
-                        sub.get("notes", "") or "",
-                        key=f"sub::{sub['_id']}",
-                    )
+                    ]
+                    if not self.hide_assigned:
+                        sub_values.append(assigned_str)
+                    sub_values.append(sub.get("notes", "") or "")
+                    table.add_row(*sub_values, key=f"sub::{sub['_id']}")
 
         if cursor_key:
             try:
@@ -326,7 +361,10 @@ class TaskManagerApp(App):
         if not projects:
             self.notify("NO PROJECTS DETECTED. Create a project first.", severity="error")
             return
-        self.push_screen(TaskFormScreen(projects, db_get_users()), self.handle_task_save)
+        self.push_screen(
+            TaskFormScreen(projects, db_get_users(), task_data={"assigned_to": self.current_user}),
+            self.handle_task_save,
+        )
 
     def action_add_subtask(self) -> None:
         selected = self.get_selected_task()
@@ -504,6 +542,19 @@ class TaskManagerApp(App):
         self.notify(f"VIEW: {status_msg}", severity="information")
         self.populate_table()
 
+    def action_toggle_assigned_column(self) -> None:
+        self.hide_assigned = not self.hide_assigned
+        status_msg = "HIDDEN" if self.hide_assigned else "VISIBLE"
+        self.notify(f"'ASSIGNED' COLUMN IS NOW {status_msg}.", severity="information")
+        self.populate_table()
+
+    # ------------------------------------------------------------------
+    # ACTIONS — Update guide
+    # ------------------------------------------------------------------
+
+    def action_show_update_guide(self) -> None:
+        self.push_screen(UpdateGuideScreen())
+
 
 # ---------------------------------------------------------------------------
 # TABLE RENDERING HELPERS
@@ -557,7 +608,7 @@ def _format_status(stat: str) -> str:
 # ENTRY POINT
 # ---------------------------------------------------------------------------
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 
 def _check_version() -> None:
