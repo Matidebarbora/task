@@ -1,8 +1,9 @@
+import random
 from datetime import datetime
 
 from textual import on, work
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Center, Horizontal, Middle, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static, TextArea
 
@@ -14,6 +15,97 @@ from db import (
     db_get_project_logs,
     db_update_project_log,
 )
+
+
+# ---------------------------------------------------------------------------
+# SPLASH / WELCOME ANIMATION  (shown on startup for returning users)
+# ---------------------------------------------------------------------------
+
+class SplashScreen(Screen[None]):
+    """Animación de bienvenida tipo "descifrado": el logo TASKY se revela
+    a partir de caracteres aleatorios.
+
+    IMPORTANTE: esta pantalla NUNCA se cierra a sí misma. Cerrar una pantalla
+    desde su propio handler/timer (dismiss o pop) congela el event loop de
+    Textual en este caso. En vez de eso, solo expone los flags `done`
+    (animación completa) y `skip_requested` (el usuario pidió saltar); la App
+    los consulta desde su propio timer y hace el pop en su contexto.
+    """
+
+    ART = [
+        r"████████╗ █████╗ ███████╗██╗  ██╗██╗   ██╗",
+        r"╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝╚██╗ ██╔╝",
+        r"   ██║   ███████║███████╗█████╔╝  ╚████╔╝ ",
+        r"   ██║   ██╔══██║╚════██║██╔═██╗   ╚██╔╝  ",
+        r"   ██║   ██║  ██║███████║██║  ██╗   ██║   ",
+        r"   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ",
+    ]
+
+    GLYPHS = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#%&@$?█▓▒░"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.done = False            # animación terminó
+        self.skip_requested = False  # el usuario apretó una tecla
+
+    def compose(self):
+        with Middle():
+            with Center():
+                yield Static("", id="splash-art")
+            with Center():
+                yield Static("[dim](presioná cualquier tecla para saltar)[/]", id="splash-hint")
+
+    def on_mount(self) -> None:
+        art = self.query_one("#splash-art", Static)
+        art.styles.width = "auto"
+        art.styles.text_align = "center"
+        hint = self.query_one("#splash-hint", Static)
+        hint.styles.width = "auto"
+        hint.styles.margin = (1, 0, 0, 0)
+
+        # Posiciones (fila, columna) de cada caracter no-vacío, en orden aleatorio.
+        self._positions = [
+            (r, c)
+            for r, line in enumerate(self.ART)
+            for c, ch in enumerate(line)
+            if ch != " "
+        ]
+        random.shuffle(self._positions)
+        self._locked = 0
+        self._step = max(1, len(self._positions) // 28)  # ~28 frames para revelar todo
+        self._render_frame(set())
+        self._timer = self.set_interval(0.045, self._tick)
+
+    def _tick(self) -> None:
+        if self.done:
+            return
+        self._locked += self._step
+        self._render_frame(set(self._positions[: self._locked]))
+        if self._locked >= len(self._positions):
+            self._timer.stop()
+            self.done = True  # la App cerrará tras la pausa final
+
+    def _render_frame(self, locked_set: set) -> None:
+        color = getattr(self.app, "app_border", "#00FF00")
+        out_lines = []
+        for r, line in enumerate(self.ART):
+            cells = []
+            for c, ch in enumerate(line):
+                if ch == " ":
+                    cells.append(" ")
+                elif (r, c) in locked_set:
+                    cells.append(f"[{color} bold]{ch}[/]")
+                else:
+                    cells.append(f"[#1f7a1f]{random.choice(self.GLYPHS)}[/]")
+            out_lines.append("".join(cells))
+        try:
+            self.query_one("#splash-art", Static).update("\n".join(out_lines))
+        except Exception:
+            pass
+
+    def on_key(self, event) -> None:
+        # Solo marca el pedido; la App hace el cierre real.
+        self.skip_requested = True
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +343,7 @@ class UpdateGuideScreen(ModalScreen[None]):
   Cada tarea pertenece a exactamente un proyecto.
   Cada proyecto tiene un nombre único y un color.
 
-  Gestión de proyectos → [bold]ctrl+1[/]
+  Gestión de proyectos → [bold]ctrl+o[/]
 
     · [bold]Crear[/]   → Escribí el nombre y elegí un color.
     · [bold]Editar[/]  → Cambiá el nombre o el color de uno existente.
@@ -263,7 +355,7 @@ class UpdateGuideScreen(ModalScreen[None]):
 
 [bold yellow]━━━  TAREAS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
 
-  [bold]Crear tarea[/]  → [bold]ctrl+2[/]
+  [bold]Crear tarea[/]  → [bold]ctrl+n[/]
   [bold]Editar tarea[/] → [bold]ctrl+e[/]  (con la fila seleccionada)
   [bold]Borrar tarea[/] → [bold]ctrl+d[/]  (con la fila seleccionada)
 
@@ -307,7 +399,7 @@ class UpdateGuideScreen(ModalScreen[None]):
   muestra una lista con todos los usuarios registrados.
 
   Para asignar:
-    1. Abrí el formulario de tarea ([bold]ctrl+2[/] o [bold]ctrl+e[/]).
+    1. Abrí el formulario de tarea ([bold]ctrl+n[/] o [bold]ctrl+e[/]).
     2. Elegí un usuario en el selector "Assigned To".
     3. Guardá.
 
@@ -329,7 +421,7 @@ class UpdateGuideScreen(ModalScreen[None]):
     [bold red]ON HOLD[/]     → Pausado / bloqueado
     [bold green]DONE[/]        → Completado
 
-  Para ocultar tareas DONE → [bold]ctrl+h[/]  (toggle HIDE DONE)
+  Para ocultar tareas DONE → [bold]ctrl+k[/]  (toggle HIDE DONE)
 
 
 [bold yellow]━━━  FILTROS Y VISTA  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
@@ -344,7 +436,7 @@ class UpdateGuideScreen(ModalScreen[None]):
   entre sesiones. Usá "CLEAR FILTERS" para resetearlos.
 
   Otros toggles de vista:
-    [bold]ctrl+h[/] → Ocultar/mostrar tareas DONE
+    [bold]ctrl+k[/] → Ocultar/mostrar tareas DONE
     [bold]ctrl+m[/] → Solo mis tareas / todas
     [bold]ctrl+a[/] → Mostrar/ocultar columna ASSIGNED
 
@@ -378,13 +470,13 @@ class UpdateGuideScreen(ModalScreen[None]):
 
 [bold yellow]━━━  ATAJOS DE TECLADO  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
 
-  [bold cyan]ctrl+1[/]   Gestionar proyectos
-  [bold cyan]ctrl+2[/]   Nueva tarea
+  [bold cyan]ctrl+o[/]   Gestionar proyectos
+  [bold cyan]ctrl+n[/]   Nueva tarea
   [bold cyan]ctrl+s[/]   Nueva sub-tarea
   [bold cyan]ctrl+e[/]   Editar tarea / sub-tarea seleccionada
   [bold cyan]ctrl+d[/]   Eliminar tarea / sub-tarea seleccionada
   [bold cyan]ctrl+f[/]   Filtros y vista
-  [bold cyan]ctrl+h[/]   Ocultar / mostrar tareas DONE
+  [bold cyan]ctrl+k[/]   Ocultar / mostrar tareas DONE
   [bold cyan]ctrl+m[/]   Mis tareas / todas las tareas
   [bold cyan]ctrl+a[/]   Mostrar / ocultar columna ASSIGNED
   [bold cyan]ctrl+p[/]   Preferencias de interfaz
@@ -1086,16 +1178,20 @@ class ProjectLogScreen(Screen):
         action = result.get("action")
         log_id = result.get("id")
 
-        if action == "save":
-            if log_id:
-                db_update_project_log(log_id, result["date"], result["title"], result["notes"])
-                self.app.notify("Log entry updated.", severity="information")
-            else:
-                db_add_project_log(self.project_name, result["date"], result["title"], result["notes"])
-                self.app.notify("Log entry added.", severity="information")
-        elif action == "delete" and log_id:
-            db_delete_project_log(log_id)
-            self.expanded_logs.discard(f"log::{log_id}")
+        try:
+            if action == "save":
+                if log_id:
+                    db_update_project_log(log_id, result["date"], result["title"], result["notes"])
+                    self.app.notify("Log entry updated.", severity="information")
+                else:
+                    db_add_project_log(self.project_name, result["date"], result["title"], result["notes"])
+                    self.app.notify("Log entry added.", severity="information")
+            elif action == "delete" and log_id:
+                db_delete_project_log(log_id)
+                self.expanded_logs.discard(f"log::{log_id}")
+        except Exception as e:
+            self.app.notify(f"ERROR: {e}", severity="error")
+            return
             self.app.notify("Log entry deleted.", severity="warning")
 
         self.populate_table()

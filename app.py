@@ -34,6 +34,7 @@ from screens import (
     ProjectLogScreen,
     ProjectManagerScreen,
     SetupWizardScreen,
+    SplashScreen,
     TaskFormScreen,
     UpdateGuideScreen,
     ViewFilterScreen,
@@ -45,13 +46,13 @@ class TaskManagerApp(App):
     ENABLE_COMMAND_PALETTE = False  # libera ctrl+p para Preferences
 
     BINDINGS = [
-        Binding("ctrl+1", "manage_projects", "Projects", show=False),
-        Binding("ctrl+2", "add_task", "Add Task", show=False),
+        Binding("ctrl+o", "manage_projects", "Projects", show=False),
+        Binding("ctrl+n", "add_task", "Add Task", show=False),
         Binding("ctrl+s", "add_subtask", "Add Sub-task", show=False),
         Binding("ctrl+e", "edit_task", "Edit Task", show=False),
         Binding("ctrl+d", "delete_task", "Delete Task", show=False),
         Binding("ctrl+f", "view_filter", "View/Filter", show=False),
-        Binding("ctrl+h", "toggle_hide_done", "Hide Done", show=False),
+        Binding("ctrl+k", "toggle_hide_done", "Hide Done", show=False),
         Binding("ctrl+m", "toggle_my_tasks", "My Tasks", show=False),
         Binding("ctrl+a", "toggle_assigned_column", "Hide Assigned", show=False),
         Binding("ctrl+p", "open_preferences", "Preferences", show=False),
@@ -72,7 +73,15 @@ class TaskManagerApp(App):
         if not config_exists():
             self.push_screen(SetupWizardScreen(), self._after_setup)
         else:
+            # Inicializa la app (tabla lista + enfocada) y muestra el splash
+            # por encima. El splash NO se cierra solo: la App lo cierra desde
+            # este timer (cerrar una pantalla desde su propio handler congela
+            # el event loop). Al hacer pop, el foco vuelve a la tabla ya lista.
             self._initialize()
+            self.push_screen(SplashScreen())
+            self._splash_elapsed = 0.0
+            self._splash_done_at = None
+            self._splash_poll = self.set_interval(0.1, self._check_splash)
 
     def _after_setup(self, success: bool | None) -> None:
         if success:
@@ -112,7 +121,31 @@ class TaskManagerApp(App):
 
         self._update_header()
         self.populate_table()
+        self.query_one(DataTable).focus()
         self.set_interval(30, self._periodic_sync)
+
+    def _check_splash(self) -> None:
+        # Corre cada 0.1s mientras el splash está arriba. Decide cuándo cerrarlo
+        # y hace el pop desde el contexto de la App (no del splash).
+        screen = self.screen
+        if not isinstance(screen, SplashScreen):
+            self._splash_poll.stop()
+            return
+        self._splash_elapsed += 0.1
+        if screen.done and self._splash_done_at is None:
+            self._splash_done_at = self._splash_elapsed
+        paused = (
+            self._splash_done_at is not None
+            and self._splash_elapsed - self._splash_done_at > 0.8  # pausa final
+        )
+        close = (
+            screen.skip_requested        # el usuario apretó una tecla
+            or paused                    # animación terminó + pausa
+            or self._splash_elapsed > 6.0  # tope de seguridad
+        )
+        if close:
+            self._splash_poll.stop()
+            self.pop_screen()
 
     def _periodic_sync(self) -> None:
         from db import sync_from_supabase
@@ -432,21 +465,25 @@ class TaskManagerApp(App):
         parent_task_id = result["parent_task_id"]
         is_subtask     = result["is_subtask"]
 
-        if is_subtask:
-            if edit_sub_id is not None:
-                db_update_subtask(edit_sub_id, task_text, status, notes)
-                self.notify("SUB-TASK OVERRIDE SUCCESSFUL.", severity="information")
+        try:
+            if is_subtask:
+                if edit_sub_id is not None:
+                    db_update_subtask(edit_sub_id, task_text, status, notes)
+                    self.notify("SUB-TASK OVERRIDE SUCCESSFUL.", severity="information")
+                else:
+                    db_add_subtask(parent_task_id, task_text, status, notes)
+                    self.expanded_rows.add(f"task::{parent_task_id}")
+                    self.notify("SUB-TASK UPLOADED.", severity="information")
             else:
-                db_add_subtask(parent_task_id, task_text, status, notes)
-                self.expanded_rows.add(f"task::{parent_task_id}")
-                self.notify("SUB-TASK UPLOADED.", severity="information")
-        else:
-            if edit_task_id is not None:
-                db_update_task(edit_task_id, task_text, priority, status, notes, assigned_to)
-                self.notify("TASK OVERRIDE SUCCESSFUL.", severity="information")
-            else:
-                db_add_task(proj, task_text, priority, status, notes, assigned_to)
-                self.notify("TASK UPLOADED TO MAINFRAME.", severity="information")
+                if edit_task_id is not None:
+                    db_update_task(edit_task_id, task_text, priority, status, notes, assigned_to)
+                    self.notify("TASK OVERRIDE SUCCESSFUL.", severity="information")
+                else:
+                    db_add_task(proj, task_text, priority, status, notes, assigned_to)
+                    self.notify("TASK UPLOADED TO MAINFRAME.", severity="information")
+        except Exception as e:
+            self.notify(f"ERROR: {e}", severity="error")
+            return
 
         self.populate_table()
 

@@ -97,18 +97,18 @@ The main DataTable encodes type and DB id into row keys:
 
 | Atajo | Acción |
 |---|---|
-| `ctrl+1` | Gestionar proyectos |
-| `ctrl+2` | Nueva tarea |
+| `ctrl+o` | Gestionar proyectos |
+| `ctrl+n` | Nueva tarea |
 | `ctrl+s` | Nueva subtarea |
 | `ctrl+e` | Editar tarea/subtarea |
 | `ctrl+d` | Eliminar tarea/subtarea |
 | `ctrl+f` | Filtros / vista |
-| `ctrl+h` | Ocultar/mostrar DONE |
+| `ctrl+k` | Ocultar/mostrar DONE |
 | `ctrl+m` | Mis tareas / todas |
 | `ctrl+a` | Ocultar/mostrar columna ASSIGNED |
 | `ctrl+p` | Preferencias |
 | `ctrl+l` | Log del proyecto (estando sobre una tarea) |
-| `ctrl+u` | Guía de actualización (in-app) |
+| `ctrl+u` | Manual (in-app) |
 | `ctrl+q` | Salir |
 | `?` | Ayuda |
 
