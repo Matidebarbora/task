@@ -405,25 +405,9 @@ class TaskManagerApp(App):
     def handle_user_manage(self, result: dict | None) -> None:
         if not result:
             return
-        action = result["action"]
-        username = result["username"]
-        if action == "edit":
-            db_update_user(username, result["display_name"])
-            self.notify(f"@{username} actualizado.", severity="information")
-            self.populate_table()
-        elif action == "delete":
-            if username == self.current_user:
-                self.notify("No podés eliminar tu propio usuario.", severity="error")
-                return
-            self.push_screen(
-                ConfirmScreen(f"¿Eliminar @{username}? Sus tareas quedarán sin asignar."),
-                lambda conf: self.finalize_delete_user(conf, username),
-            )
-
-    def finalize_delete_user(self, confirm: bool | None, username: str) -> None:
-        if confirm:
-            db_delete_user(username)
-            self.notify(f"@{username} eliminado.", severity="warning")
+        if result["action"] == "edit":
+            db_update_user(result["username"], result["display_name"])
+            self.notify(f"@{result['username']} actualizado.", severity="information")
             self.populate_table()
 
     # ------------------------------------------------------------------
@@ -716,7 +700,7 @@ def _format_status(stat: str) -> str:
 # ENTRY POINT
 # ---------------------------------------------------------------------------
 
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
 
 
 def _check_version() -> None:

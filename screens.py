@@ -221,16 +221,44 @@ class HelpScreen(ModalScreen[None]):
         ("?", "close", "Close"),
     ]
 
+    GROUPS = [
+        ("PROYECTOS / TAREAS", [
+            ("ctrl+o", "Projects"),
+            ("ctrl+n", "Add Task"),
+            ("ctrl+s", "Add Sub-task"),
+            ("ctrl+e", "Edit / view Task"),
+            ("ctrl+d", "Delete Task"),
+            ("ctrl+l", "Project Log"),
+            ("Enter",  "Expand / Collapse"),
+        ]),
+        ("USUARIOS / VISTA", [
+            ("ctrl+g", "Users"),
+            ("ctrl+m", "My Tasks toggle"),
+            ("ctrl+b", "View User"),
+            ("ctrl+a", "Hide Assigned col"),
+            ("ctrl+f", "Filters"),
+            ("ctrl+k", "Hide Done"),
+        ]),
+        ("SISTEMA", [
+            ("ctrl+r", "Sync now"),
+            ("ctrl+p", "Preferences"),
+            ("ctrl+u", "Manual"),
+            ("?",      "Shortcuts"),
+            ("ctrl+q", "Quit"),
+        ]),
+    ]
+
     def __init__(self, bindings_list: list[tuple[str, str]]):
         super().__init__()
-        self.bindings_list = bindings_list
 
     def compose(self):
         with Vertical(id="help-dialog"):
             yield Label("[bold cyan]KEYBOARD SHORTCUTS[/]", id="dialog-title")
-            dt = DataTable(id="help-table")
-            dt.show_header = False
-            yield dt
+            with Horizontal(id="help-columns"):
+                for i, (_, _binds) in enumerate(self.GROUPS):
+                    with Vertical(id=f"help-col-{i}"):
+                        yield Label("", id=f"help-col-title-{i}")
+                        yield DataTable(show_header=False, id=f"help-dt-{i}")
             with Horizontal(id="dialog-buttons"):
                 yield Button("CLOSE", variant="primary", id="btn-close")
 
@@ -240,16 +268,33 @@ class HelpScreen(ModalScreen[None]):
         try:
             dialog = self.query_one("#help-dialog")
             dialog.styles.border = ("heavy", color)
+            dialog.styles.width = 108
+            dialog.styles.height = "auto"
             if bg_color:
                 dialog.styles.background = bg_color
-            self.query_one("#help-table").styles.border = ("round", color)
+            self.query_one("#help-columns").styles.height = "auto"
         except Exception:
             pass
 
-        table = self.query_one(DataTable)
-        table.add_columns("KEY", "ACTION")
-        for key, desc in self.bindings_list:
-            table.add_row(f"[bold cyan]{key.upper()}[/]", desc)
+        for i, (group_title, bindings) in enumerate(self.GROUPS):
+            try:
+                col = self.query_one(f"#help-col-{i}")
+                col.styles.width = "1fr"
+                col.styles.height = "auto"
+                col.styles.padding = (0, 2)
+                if i > 0:
+                    col.styles.border_left = ("vkey", color)
+                title = self.query_one(f"#help-col-title-{i}", Label)
+                title.update(f"[bold {color}]{group_title}[/]")
+                title.styles.padding = (0, 0, 1, 0)
+                table = self.query_one(f"#help-dt-{i}", DataTable)
+                table.styles.height = "auto"
+                table.styles.border = ("none", "transparent")
+                table.add_columns("KEY", "ACTION")
+                for key, desc in bindings:
+                    table.add_row(f"[bold cyan]{key.upper()}[/]", desc)
+            except Exception:
+                pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-close":
@@ -1254,11 +1299,6 @@ class UserManagerScreen(ModalScreen[dict | None]):
             yield Input(placeholder="Nuevo display name...", id="edit-display-name")
             yield Button("ACTUALIZAR", variant="primary", id="btn-edit")
 
-            yield Label("\n[bold white]── ELIMINAR USUARIO ──[/]")
-            yield Label("[dim red]Sus tareas quedarán sin asignar.[/]")
-            yield Select(user_opts, id="del-user-sel", prompt="Seleccionar usuario...")
-            yield Button("ELIMINAR", variant="error", id="btn-del")
-
             with Horizontal(id="dialog-buttons"):
                 yield Button("CERRAR", variant="default", id="btn-cancel")
 
@@ -1270,12 +1310,6 @@ class UserManagerScreen(ModalScreen[dict | None]):
                 self.app.notify("Seleccioná un usuario y escribí el nuevo nombre.", severity="warning")
                 return
             self.dismiss({"action": "edit", "username": str(target), "display_name": new_name})
-        elif event.button.id == "btn-del":
-            target = self.query_one("#del-user-sel", Select).value
-            if target == Select.BLANK:
-                self.app.notify("Seleccioná un usuario para eliminar.", severity="warning")
-                return
-            self.dismiss({"action": "delete", "username": str(target)})
         elif event.button.id == "btn-cancel":
             self.dismiss(None)
 
