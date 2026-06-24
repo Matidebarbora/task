@@ -16,7 +16,9 @@ from db import (
     db_delete_project,
     db_delete_subtask,
     db_delete_task,
+    db_delete_user,
     db_edit_project,
+    db_get_all_users,
     db_get_project_for_task,
     db_get_subtask,
     db_get_subtask_parent,
@@ -26,6 +28,7 @@ from db import (
     db_save_view_settings,
     db_update_subtask,
     db_update_task,
+    db_update_user,
 )
 from screens import (
     ConfirmScreen,
@@ -37,6 +40,8 @@ from screens import (
     SplashScreen,
     TaskFormScreen,
     UpdateGuideScreen,
+    UserManagerScreen,
+    UserSelectorScreen,
     ViewFilterScreen,
 )
 
@@ -47,6 +52,7 @@ class TaskManagerApp(App):
 
     BINDINGS = [
         Binding("ctrl+o", "manage_projects", "Projects", show=False),
+        Binding("ctrl+g", "manage_users", "Users", show=False),
         Binding("ctrl+n", "add_task", "Add Task", show=False),
         Binding("ctrl+s", "add_subtask", "Add Sub-task", show=False),
         Binding("ctrl+e", "edit_task", "Edit Task", show=False),
@@ -54,6 +60,8 @@ class TaskManagerApp(App):
         Binding("ctrl+f", "view_filter", "View/Filter", show=False),
         Binding("ctrl+k", "toggle_hide_done", "Hide Done", show=False),
         Binding("ctrl+m", "toggle_my_tasks", "My Tasks", show=False),
+        Binding("ctrl+b", "select_user_view", "View User", show=False),
+        Binding("ctrl+r", "sync_now", "Sync", show=False),
         Binding("ctrl+a", "toggle_assigned_column", "Hide Assigned", show=False),
         Binding("ctrl+p", "open_preferences", "Preferences", show=False),
         Binding("ctrl+l", "open_project_log", "Project Log", show=False),
@@ -104,7 +112,7 @@ class TaskManagerApp(App):
 
         cfg = load_config()
         self.current_user: str = cfg["username"]
-        self.my_tasks_only: bool = False
+        self.view_user: str | None = self.current_user
         self.hide_assigned: bool = True
 
         self.data = db_load_data()
@@ -200,10 +208,12 @@ class TaskManagerApp(App):
 
     def _update_header(self) -> None:
         user = getattr(self, "current_user", "")
-        my = getattr(self, "my_tasks_only", False)
+        view_user = getattr(self, "view_user", None)
         label = f"TASKY  —  @{user}" if user else "TASKY"
-        if my:
+        if view_user == user:
             label += "  [MY TASKS]"
+        elif view_user:
+            label += f"  [@{view_user}]"
         try:
             self.query_one("#app-title", Static).update(label)
         except Exception:
@@ -245,8 +255,7 @@ class TaskManagerApp(App):
         ]
         all_tasks = _filter_tasks(
             all_tasks, view, self.hide_done,
-            getattr(self, "my_tasks_only", False),
-            getattr(self, "current_user", ""),
+            getattr(self, "view_user", None),
         )
         all_tasks = _sort_tasks(all_tasks, view)
 
@@ -383,6 +392,38 @@ class TaskManagerApp(App):
         if confirm:
             db_delete_project(name)
             self.notify(f"PROJECT '{name}' PURGED.", severity="warning")
+            self.populate_table()
+
+    # ------------------------------------------------------------------
+    # ACTIONS — Users
+    # ------------------------------------------------------------------
+
+    def action_manage_users(self) -> None:
+        users = db_get_all_users()
+        self.push_screen(UserManagerScreen(users, self.current_user), self.handle_user_manage)
+
+    def handle_user_manage(self, result: dict | None) -> None:
+        if not result:
+            return
+        action = result["action"]
+        username = result["username"]
+        if action == "edit":
+            db_update_user(username, result["display_name"])
+            self.notify(f"@{username} actualizado.", severity="information")
+            self.populate_table()
+        elif action == "delete":
+            if username == self.current_user:
+                self.notify("No podés eliminar tu propio usuario.", severity="error")
+                return
+            self.push_screen(
+                ConfirmScreen(f"¿Eliminar @{username}? Sus tareas quedarán sin asignar."),
+                lambda conf: self.finalize_delete_user(conf, username),
+            )
+
+    def finalize_delete_user(self, confirm: bool | None, username: str) -> None:
+        if confirm:
+            db_delete_user(username)
+            self.notify(f"@{username} eliminado.", severity="warning")
             self.populate_table()
 
     # ------------------------------------------------------------------
@@ -573,11 +614,42 @@ class TaskManagerApp(App):
         self.populate_table()
 
     def action_toggle_my_tasks(self) -> None:
-        self.my_tasks_only = not self.my_tasks_only
+        if self.view_user == self.current_user:
+            self.view_user = None
+            self.notify("VIEW: ALL TASKS", severity="information")
+        else:
+            self.view_user = self.current_user
+            self.notify("VIEW: MY TASKS", severity="information")
         self._update_header()
-        status_msg = "MY TASKS" if self.my_tasks_only else "ALL TASKS"
-        self.notify(f"VIEW: {status_msg}", severity="information")
         self.populate_table()
+
+    def action_select_user_view(self) -> None:
+        users = db_get_users()
+        self.push_screen(
+            UserSelectorScreen(users, self.view_user, self.current_user),
+            self.handle_user_selector,
+        )
+
+    def handle_user_selector(self, result: dict | None) -> None:
+        if result is None:
+            return
+        self.view_user = result["user"]
+        self._update_header()
+        label = f"@{self.view_user}" if self.view_user else "TODOS"
+        self.notify(f"VIENDO: {label}", severity="information")
+        self.populate_table()
+
+    def action_sync_now(self) -> None:
+        self.notify("SINCRONIZANDO...", severity="information")
+        def _sync():
+            from db import sync_from_supabase
+            ok = sync_from_supabase()
+            if ok:
+                self.call_from_thread(self.populate_table)
+                self.call_from_thread(lambda: self.notify("SYNC COMPLETO.", severity="information"))
+            else:
+                self.call_from_thread(lambda: self.notify("ERROR: NO SE PUDO SINCRONIZAR.", severity="error"))
+        threading.Thread(target=_sync, daemon=True).start()
 
     def action_toggle_assigned_column(self) -> None:
         self.hide_assigned = not self.hide_assigned
@@ -601,8 +673,7 @@ def _filter_tasks(
     all_tasks: list,
     view: dict,
     hide_done: bool,
-    my_tasks_only: bool = False,
-    current_user: str = "",
+    view_user: str | None = None,
 ) -> list:
     if view.get("filter_project"):
         all_tasks = [x for x in all_tasks if x[0] == view["filter_project"]]
@@ -610,8 +681,8 @@ def _filter_tasks(
         all_tasks = [x for x in all_tasks if x[1]["priority"] == view["filter_priority"]]
     if hide_done:
         all_tasks = [x for x in all_tasks if x[1].get("status") != "DONE"]
-    if my_tasks_only and current_user:
-        all_tasks = [x for x in all_tasks if x[1].get("assigned_to") == current_user]
+    if view_user:
+        all_tasks = [x for x in all_tasks if x[1].get("assigned_to") == view_user]
     return all_tasks
 
 
@@ -645,7 +716,7 @@ def _format_status(stat: str) -> str:
 # ENTRY POINT
 # ---------------------------------------------------------------------------
 
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 
 
 def _check_version() -> None:

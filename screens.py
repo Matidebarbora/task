@@ -404,6 +404,7 @@ class UpdateGuideScreen(ModalScreen[None]):
     3. Guardá.
 
   Para ver solo tus tareas → [bold]ctrl+m[/]  (toggle MY TASKS)
+  Para elegir qué usuario ver → [bold]ctrl+b[/]  (popup de selección)
   Para mostrar/ocultar la columna ASSIGNED → [bold]ctrl+a[/]
 
 
@@ -471,6 +472,7 @@ class UpdateGuideScreen(ModalScreen[None]):
 [bold yellow]━━━  ATAJOS DE TECLADO  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
 
   [bold cyan]ctrl+o[/]   Gestionar proyectos
+  [bold cyan]ctrl+g[/]   Gestionar usuarios
   [bold cyan]ctrl+n[/]   Nueva tarea
   [bold cyan]ctrl+s[/]   Nueva sub-tarea
   [bold cyan]ctrl+e[/]   Editar tarea / sub-tarea seleccionada
@@ -478,6 +480,8 @@ class UpdateGuideScreen(ModalScreen[None]):
   [bold cyan]ctrl+f[/]   Filtros y vista
   [bold cyan]ctrl+k[/]   Ocultar / mostrar tareas DONE
   [bold cyan]ctrl+m[/]   Mis tareas / todas las tareas
+  [bold cyan]ctrl+b[/]   Elegir qué usuario ver
+  [bold cyan]ctrl+r[/]   Sincronizar con Supabase ahora
   [bold cyan]ctrl+a[/]   Mostrar / ocultar columna ASSIGNED
   [bold cyan]ctrl+p[/]   Preferencias de interfaz
   [bold cyan]ctrl+l[/]   Log del proyecto (desde una tarea)
@@ -1204,6 +1208,152 @@ class ProjectLogScreen(Screen):
             else:
                 screen_binds.append((b.key, b.description))
         self.app.push_screen(HelpScreen(screen_binds + [("ctrl+q", "Quit"), ("ctrl+p", "Preferences"), ("ctrl+l", "Project Log")]))
+
+
+# ---------------------------------------------------------------------------
+# USER SELECTOR  (popup para elegir qué usuario ver, fondo principal visible)
+# ---------------------------------------------------------------------------
+
+class UserManagerScreen(ModalScreen[dict | None]):
+    """Gestor de usuarios: ver, editar display name, eliminar.
+    Flotante pequeño, fondo principal visible.
+    """
+    DEFAULT_CSS = """
+    UserManagerScreen {
+        background: transparent;
+        align: center middle;
+    }
+    #user-mgr-box {
+        width: 54;
+        max-height: 80vh;
+        padding: 1 2;
+    }
+    """
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, users: list[dict], current_user: str):
+        super().__init__()
+        self.users = users
+        self.current_user = current_user
+
+    def compose(self):
+        user_opts = [
+            (f"@{u['username']}  —  {u['display_name']}", u["username"])
+            for u in self.users
+        ]
+        with VerticalScroll(id="user-mgr-box"):
+            yield Label("[bold magenta]GESTIÓN DE USUARIOS[/bold magenta]", id="dialog-title")
+
+            yield Label("[bold white]── USUARIOS REGISTRADOS ──[/]")
+            for u in self.users:
+                me = "  [dim](vos)[/]" if u["username"] == self.current_user else ""
+                yield Label(f"  [cyan]@{u['username']}[/]  [dim]{u['display_name']}[/]{me}")
+
+            yield Label("\n[bold white]── EDITAR DISPLAY NAME ──[/]")
+            yield Select(user_opts, id="edit-user-sel", prompt="Seleccionar usuario...")
+            yield Input(placeholder="Nuevo display name...", id="edit-display-name")
+            yield Button("ACTUALIZAR", variant="primary", id="btn-edit")
+
+            yield Label("\n[bold white]── ELIMINAR USUARIO ──[/]")
+            yield Label("[dim red]Sus tareas quedarán sin asignar.[/]")
+            yield Select(user_opts, id="del-user-sel", prompt="Seleccionar usuario...")
+            yield Button("ELIMINAR", variant="error", id="btn-del")
+
+            with Horizontal(id="dialog-buttons"):
+                yield Button("CERRAR", variant="default", id="btn-cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-edit":
+            target = self.query_one("#edit-user-sel", Select).value
+            new_name = self.query_one("#edit-display-name", Input).value.strip()
+            if target == Select.BLANK or not new_name:
+                self.app.notify("Seleccioná un usuario y escribí el nuevo nombre.", severity="warning")
+                return
+            self.dismiss({"action": "edit", "username": str(target), "display_name": new_name})
+        elif event.button.id == "btn-del":
+            target = self.query_one("#del-user-sel", Select).value
+            if target == Select.BLANK:
+                self.app.notify("Seleccioná un usuario para eliminar.", severity="warning")
+                return
+            self.dismiss({"action": "delete", "username": str(target)})
+        elif event.button.id == "btn-cancel":
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_mount(self) -> None:
+        color = getattr(self.app, "app_border", "#00FF00")
+        bg = getattr(self.app, "app_bg", "") or "#1e1e1e"
+        try:
+            box = self.query_one("#user-mgr-box")
+            box.styles.border = ("heavy", color)
+            box.styles.background = bg
+        except Exception:
+            pass
+
+
+class UserSelectorScreen(ModalScreen[dict | None]):
+    """Popup pequeño y centrado para elegir qué usuario ver.
+    Fondo principal visible. Solo teclado: Tab, flechas, Enter, Escape.
+    Devuelve {"user": str | None} al confirmar, o None si se cancela.
+    """
+    DEFAULT_CSS = """
+    UserSelectorScreen {
+        background: transparent;
+        align: center middle;
+    }
+    #user-sel-box {
+        height: auto;
+        width: 48;
+        padding: 1 2;
+    }
+    """
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, users: list[str], current_view: str | None, current_user: str):
+        super().__init__()
+        self.users = users
+        self.current_view = current_view
+        self.current_user = current_user
+
+    def compose(self):
+        opts = [("TODOS", "__all__")] + [
+            (f"@{u}" + ("  (yo)" if u == self.current_user else ""), u)
+            for u in self.users
+        ]
+        cur = self.current_view or "__all__"
+        with Vertical(id="user-sel-box"):
+            yield Label("[bold cyan]VER TAREAS DE...[/]", id="dialog-title")
+            yield Select(opts, id="user-select", value=cur)
+            with Horizontal(id="dialog-buttons"):
+                yield Button("APLICAR", variant="success", id="btn-apply")
+                yield Button("CANCELAR", variant="error", id="btn-cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-apply":
+            self._confirm()
+        elif event.button.id == "btn-cancel":
+            self.dismiss(None)
+
+    def _confirm(self) -> None:
+        val = self.query_one("#user-select", Select).value
+        if val == Select.BLANK:
+            return
+        self.dismiss({"user": None if val == "__all__" else str(val)})
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_mount(self) -> None:
+        color = getattr(self.app, "app_border", "#00FF00")
+        bg = getattr(self.app, "app_bg", "") or "#1e1e1e"
+        try:
+            box = self.query_one("#user-sel-box")
+            box.styles.border = ("heavy", color)
+            box.styles.background = bg
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

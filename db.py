@@ -94,6 +94,35 @@ def db_get_users() -> list[str]:
     return local_get_users()
 
 
+def db_get_all_users() -> list[dict]:
+    from local_db import local_get_all_users
+    return local_get_all_users()
+
+
+def db_update_user(username: str, display_name: str) -> None:
+    from local_db import local_update_user
+    local_update_user(username, display_name)
+    def _sb():
+        try:
+            get_client().table("users").update({"display_name": display_name}).eq("username", username).execute()
+        except Exception:
+            pass
+    _bg(_sb)
+
+
+def db_delete_user(username: str) -> None:
+    from local_db import local_delete_user
+    local_delete_user(username)
+    def _sb():
+        try:
+            sb = get_client()
+            sb.table("tasks").update({"assigned_to": None}).eq("assigned_to", username).execute()
+            sb.table("users").delete().eq("username", username).execute()
+        except Exception:
+            pass
+    _bg(_sb)
+
+
 def db_ensure_user(username: str, display_name: str) -> None:
     from local_db import local_ensure_user
     local_ensure_user(username, display_name)

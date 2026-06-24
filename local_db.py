@@ -306,3 +306,20 @@ def local_delete_project_log(log_id: int) -> None:
 def local_ensure_user(username: str, display_name: str) -> None:
     with _conn() as c:
         c.execute("INSERT OR IGNORE INTO users VALUES (?,?)", (username, display_name))
+
+
+def local_get_all_users() -> list[dict]:
+    with _conn() as c:
+        rows = c.execute("SELECT username, display_name FROM users ORDER BY username").fetchall()
+        return [dict(r) for r in rows]
+
+
+def local_update_user(username: str, display_name: str) -> None:
+    with _conn() as c:
+        c.execute("UPDATE users SET display_name=? WHERE username=?", (display_name, username))
+
+
+def local_delete_user(username: str) -> None:
+    with _conn() as c:
+        c.execute("UPDATE tasks SET assigned_to=NULL WHERE assigned_to=?", (username,))
+        c.execute("DELETE FROM users WHERE username=?", (username,))
