@@ -80,6 +80,7 @@ Sub-tasks have no `assigned_to` — they inherit from the parent task for displa
 | `LogDetailScreen` | Modal — read-only view of a log entry |
 | `ConfirmScreen` | Modal — generic yes/no confirmation |
 | `HelpScreen` | Modal — keybinding reference |
+| `FocusModeScreen` | Modal — small floating window, main screen visible behind, shows only the current user's IN PROGRESS tasks |
 
 ### Row keys
 
@@ -105,6 +106,7 @@ The main DataTable encodes type and DB id into row keys:
 | `ctrl+f` | Filtros / vista |
 | `ctrl+k` | Ocultar/mostrar DONE |
 | `ctrl+m` | Mis tareas / todas |
+| `ctrl+w` | Focus Mode (ventana flotante con mis tareas IN PROGRESS) |
 | `ctrl+a` | Ocultar/mostrar columna ASSIGNED |
 | `ctrl+p` | Preferencias |
 | `ctrl+l` | Log del proyecto (estando sobre una tarea) |

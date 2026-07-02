@@ -32,6 +32,7 @@ from db import (
 )
 from screens import (
     ConfirmScreen,
+    FocusModeScreen,
     HelpScreen,
     PreferencesScreen,
     ProjectLogScreen,
@@ -60,6 +61,7 @@ class TaskManagerApp(App):
         Binding("ctrl+f", "view_filter", "View/Filter", show=False),
         Binding("ctrl+k", "toggle_hide_done", "Hide Done", show=False),
         Binding("ctrl+m", "toggle_my_tasks", "My Tasks", show=False),
+        Binding("ctrl+w", "focus_mode", "Focus Mode", show=True),
         Binding("ctrl+b", "select_user_view", "View User", show=False),
         Binding("ctrl+r", "sync_now", "Sync", show=False),
         Binding("ctrl+a", "toggle_assigned_column", "Hide Assigned", show=False),
@@ -607,6 +609,21 @@ class TaskManagerApp(App):
         self._update_header()
         self.populate_table()
 
+    def action_focus_mode(self) -> None:
+        items = []
+        for project, tlist in self.data.get("projects", {}).items():
+            for t in tlist:
+                if t.get("status") == "IN PROGRESS" and t.get("assigned_to") == self.current_user:
+                    items.append((project, t))
+                if t.get("assigned_to") == self.current_user:
+                    for sub in t.get("sub_tasks", []):
+                        if sub.get("status") == "IN PROGRESS":
+                            items.append((project, {
+                                "task": f"↳ [dim white]{t['task']}[/]\n   [white]{sub['task']}[/]",
+                                "notes": sub.get("notes"),
+                            }))
+        self.push_screen(FocusModeScreen(items))
+
     def action_select_user_view(self) -> None:
         users = db_get_users()
         self.push_screen(
@@ -700,7 +717,7 @@ def _format_status(stat: str) -> str:
 # ENTRY POINT
 # ---------------------------------------------------------------------------
 
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.4"
 
 
 def _check_version() -> None:

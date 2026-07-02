@@ -238,6 +238,7 @@ class HelpScreen(ModalScreen[None]):
             ("ctrl+a", "Hide Assigned col"),
             ("ctrl+f", "Filters"),
             ("ctrl+k", "Hide Done"),
+            ("ctrl+w", "Focus Mode"),
         ]),
         ("SISTEMA", [
             ("ctrl+r", "Sync now"),
@@ -525,6 +526,7 @@ class UpdateGuideScreen(ModalScreen[None]):
   [bold cyan]ctrl+f[/]   Filtros y vista
   [bold cyan]ctrl+k[/]   Ocultar / mostrar tareas DONE
   [bold cyan]ctrl+m[/]   Mis tareas / todas las tareas
+  [bold cyan]ctrl+w[/]   Focus Mode (ventana con mis tareas IN PROGRESS)
   [bold cyan]ctrl+b[/]   Elegir qué usuario ver
   [bold cyan]ctrl+r[/]   Sincronizar con Supabase ahora
   [bold cyan]ctrl+a[/]   Mostrar / ocultar columna ASSIGNED
@@ -1325,6 +1327,65 @@ class UserManagerScreen(ModalScreen[dict | None]):
             box.styles.background = bg
         except Exception:
             pass
+
+
+class FocusModeScreen(ModalScreen[None]):
+    """Ventana pequeña y flotante: solo mis tareas IN PROGRESS.
+    Fondo principal visible.
+    """
+    DEFAULT_CSS = """
+    FocusModeScreen {
+        background: transparent;
+        align: center middle;
+    }
+    #focus-box {
+        width: 140;
+        max-height: 40;
+        padding: 1 2;
+    }
+    """
+    BINDINGS = [
+        ("escape", "close", "Close"),
+        ("ctrl+w", "close", "Close"),
+    ]
+
+    def __init__(self, tasks: list[tuple[str, dict]]):
+        super().__init__()
+        self.tasks = tasks
+
+    def compose(self):
+        with Vertical(id="focus-box"):
+            yield Label("[bold cyan]FOCUS MODE — IN PROGRESS[/]", id="dialog-title")
+            if not self.tasks:
+                yield Label("[dim]No tenés tareas IN PROGRESS.[/]")
+            else:
+                yield DataTable(show_header=True, id="focus-table")
+            with Horizontal(id="dialog-buttons"):
+                yield Button("CERRAR", variant="primary", id="btn-close")
+
+    def on_mount(self) -> None:
+        color = getattr(self.app, "app_border", "#00FF00")
+        bg = getattr(self.app, "app_bg", "") or "#1e1e1e"
+        try:
+            box = self.query_one("#focus-box")
+            box.styles.border = ("heavy", color)
+            box.styles.background = bg
+        except Exception:
+            pass
+        if self.tasks:
+            table = self.query_one("#focus-table", DataTable)
+            table.styles.height = "auto"
+            table.styles.border = ("none", "transparent")
+            table.add_columns("PROJECT", "TASK", "NOTES")
+            for proj, t in self.tasks:
+                table.add_row(f"[cyan bold]{proj}[/]", t["task"], t.get("notes", "") or "", height=None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-close":
+            self.dismiss(None)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
 
 
 class UserSelectorScreen(ModalScreen[dict | None]):
