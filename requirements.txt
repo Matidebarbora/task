@@ -1,0 +1,2 @@
+textual==7.4.0
+supabase==2.31.0

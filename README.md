@@ -33,7 +33,7 @@ Gestor de tareas colaborativo que corre en la terminal. Diseñado para equipos p
 - Proyecto en Supabase (gratuito) con el schema aplicado
 
 ```bash
-pip install textual supabase
+pip install -r requirements.txt
 ```
 
 ---
@@ -43,7 +43,7 @@ pip install textual supabase
 ```bash
 git clone <url-del-repo>
 cd task
-pip install textual supabase
+pip install -r requirements.txt
 python sqtask.py
 ```
 
@@ -75,7 +75,7 @@ Al crear la cuenta, la app:
 ## Incorporar un nuevo integrante
 
 1. `git clone <url-del-repo>`
-2. `pip install textual supabase`
+2. `pip install -r requirements.txt`
 3. `python sqtask.py` → la pantalla de login lo guía, "CREAR UNA CUENTA NUEVA"
 4. Al terminar ya aparece en la lista "Assigned To" del resto del equipo
 
@@ -186,6 +186,7 @@ task/
 ├── config.py              # Config local (~/.tasky/config.json)
 ├── styles.tcss            # CSS de Textual
 ├── supabase_schema.sql    # Schema inicial — ejecutar una vez en Supabase
+├── requirements.txt       # Versiones fijadas de las dependencias
 ├── migrate_to_supabase.py # Migración desde tasks.db legacy (uso único)
 └── import_tasks_db.py     # Importar tasks.db de un usuario al Supabase compartido
 ```

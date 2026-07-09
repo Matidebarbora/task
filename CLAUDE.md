@@ -13,8 +13,10 @@ On first run, an email + password login/signup screen appears. No Supabase URL/k
 ## Dependencies
 
 ```bash
-pip install textual supabase
+pip install -r requirements.txt
 ```
+
+Pinned exact versions (`textual==7.4.0`, `supabase==2.31.0`) — avoids new users getting an untested newer version that might break something.
 
 ## File structure
 
@@ -28,6 +30,7 @@ task/
 ├── config.py              # Local config file management (~/.tasky/config.json)
 ├── styles.tcss            # Textual CSS
 ├── supabase_schema.sql    # Run once in Supabase SQL Editor to create tables
+├── requirements.txt       # Pinned dependency versions
 └── migrate_to_supabase.py # One-time migration from legacy tasks.db
 ```
 
@@ -135,14 +138,14 @@ Notas:
 ## Adding a new user
 
 1. Copy or clone the project folder
-2. `pip install textual supabase`
+2. `pip install -r requirements.txt`
 3. `python sqtask.py` → login/signup screen appears
 4. Create an account: email, password, username, display name (no credentials to share — the Supabase connection is baked in)
 
 ## Onboarding a new team member
 
 1. `git clone <repo_url>` (repo privado en GitHub)
-2. `pip install textual supabase`
+2. `pip install -r requirements.txt`
 3. `python sqtask.py` → aparece la pantalla de login
 4. "CREAR CUENTA": email, contraseña, username y nombre propios. Si ya usabas Tasky antes de este cambio, usá el **mismo username** que ya tenías (aparece precargado) para reclamar tus tareas asignadas en vez de duplicar el usuario.
 5. Si Supabase pide confirmar el email, revisar la casilla y después volver a la app para iniciar sesión.

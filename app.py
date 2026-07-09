@@ -48,6 +48,8 @@ from screens import (
     ViewFilterScreen,
 )
 
+APP_VERSION = "1.2.0"
+
 
 class TaskManagerApp(App):
     CSS_PATH = "styles.tcss"
@@ -199,7 +201,7 @@ class TaskManagerApp(App):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="top-bar"):
-            yield Static("TASKY", id="app-title")
+            yield Static(f"TASKY v{APP_VERSION}", id="app-title")
         yield DataTable(id="task-table", cursor_type="row", cursor_foreground_priority="renderable")
         yield Footer()
 
@@ -244,7 +246,7 @@ class TaskManagerApp(App):
     def _update_header(self) -> None:
         user = getattr(self, "current_user", "")
         view_user = getattr(self, "view_user", None)
-        label = f"TASKY  —  @{user}" if user else "TASKY"
+        label = f"TASKY v{APP_VERSION}  —  @{user}" if user else f"TASKY v{APP_VERSION}"
         if view_user == user:
             label += "  [MY TASKS]"
         elif view_user:
@@ -767,9 +769,6 @@ def _format_status(stat: str) -> str:
 # ---------------------------------------------------------------------------
 # ENTRY POINT
 # ---------------------------------------------------------------------------
-
-APP_VERSION = "1.2.0"
-
 
 def _auto_update() -> None:
     """Best-effort `git pull --ff-only` al arrancar, y relanza el proceso si

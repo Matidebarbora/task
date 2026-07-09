@@ -420,7 +420,7 @@ class UpdateGuideScreen(ModalScreen[None]):
   [bold]Pasos para incorporar a un nuevo integrante:[/]
 
     1. Que clone el repo:  [bold]git clone <url-del-repo>[/]
-    2. Que instale deps:   [bold]pip install textual supabase[/]
+    2. Que instale deps:   [bold]pip install -r requirements.txt[/]
     3. Que corra la app:   [bold]python sqtask.py[/]
     4. La pantalla de login lo guía, "CREAR UNA CUENTA NUEVA".
        Al terminar ya existe en el sistema y cualquiera puede

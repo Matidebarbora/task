@@ -29,8 +29,10 @@ cd task
 ## Paso 2 — Instalar dependencias
 
 ```bash
-pip install textual supabase
+pip install -r requirements.txt
 ```
+
+Instala las versiones exactas ya probadas — evita que te toque una versión más nueva sin probar que rompa algo.
 
 ## Paso 3 — Iniciar la app
 
