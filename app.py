@@ -1,7 +1,10 @@
+import os
+import subprocess
 import sys
 import threading
+from pathlib import Path
 
-from textual import on
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -31,12 +34,12 @@ from db import (
     db_update_user,
 )
 from screens import (
+    AuthScreen,
     ConfirmScreen,
     HelpScreen,
     PreferencesScreen,
     ProjectLogScreen,
     ProjectManagerScreen,
-    SetupWizardScreen,
     SplashScreen,
     TaskFormScreen,
     UpdateGuideScreen,
@@ -82,23 +85,51 @@ class TaskManagerApp(App):
 
     def on_mount(self) -> None:
         if not config_exists():
-            self.push_screen(SetupWizardScreen(), self._after_setup)
-        else:
-            # Inicializa la app (tabla lista + enfocada) y muestra el splash
-            # por encima. El splash NO se cierra solo: la App lo cierra desde
-            # este timer (cerrar una pantalla desde su propio handler congela
-            # el event loop). Al hacer pop, el foco vuelve a la tabla ya lista.
-            self._initialize()
-            self.push_screen(SplashScreen())
-            self._splash_elapsed = 0.0
-            self._splash_done_at = None
-            self._splash_poll = self.set_interval(0.1, self._check_splash)
+            self.push_screen(AuthScreen(mode="signup"), self._after_auth)
+            return
+        self._try_restore_session()
 
-    def _after_setup(self, success: bool | None) -> None:
+    @work(thread=True)
+    def _try_restore_session(self) -> None:
+        from db import db_auth_restore_session
+        identity = db_auth_restore_session()
+        self.call_from_thread(self._after_restore, identity)
+
+    def _after_restore(self, identity: dict | None) -> None:
+        if identity is not None:
+            self._boot_main_ui()
+            return
+        cfg = load_config()
+        # Si cfg ya tiene "email", esta máquina ya hizo login real alguna
+        # vez -> pedir login. Si no, es una config pre-login (de antes de
+        # este cambio) -> signup con el username precargado, para que la
+        # persona "reclame" la cuenta que ya tenía en vez de duplicarla.
+        mode = "login" if cfg.get("email") else "signup"
+        self.push_screen(
+            AuthScreen(
+                mode=mode,
+                prefill_username=cfg.get("username"),
+                prefill_display_name=cfg.get("display_name"),
+            ),
+            self._after_auth,
+        )
+
+    def _after_auth(self, success: bool | None) -> None:
         if success:
-            self._initialize()
+            self._boot_main_ui()
         else:
             self.exit()
+
+    def _boot_main_ui(self) -> None:
+        # Inicializa la app (tabla lista + enfocada) y muestra el splash por
+        # encima. El splash NO se cierra solo: la App lo cierra desde este
+        # timer (cerrar una pantalla desde su propio handler congela el
+        # event loop). Al hacer pop, el foco vuelve a la tabla ya lista.
+        self._initialize()
+        self.push_screen(SplashScreen())
+        self._splash_elapsed = 0.0
+        self._splash_done_at = None
+        self._splash_poll = self.set_interval(0.1, self._check_splash)
 
     def _initialize(self) -> None:
         from local_db import init_db, has_local_data
@@ -737,7 +768,47 @@ def _format_status(stat: str) -> str:
 # ENTRY POINT
 # ---------------------------------------------------------------------------
 
-APP_VERSION = "1.1.4"
+APP_VERSION = "1.2.0"
+
+
+def _auto_update() -> None:
+    """Best-effort `git pull --ff-only` al arrancar, y relanza el proceso si
+    llegó código nuevo. No-op silencioso si: no hay .git (instalación por
+    zip), git no está disponible, sin conexión, o el pull no es fast-forward
+    (ediciones locales sin commitear) — nunca se hace stash/reset automático,
+    arriesgaría descartar trabajo. `git pull` por sí solo no alcanza porque
+    el intérprete ya importó los módulos viejos; hace falta re-ejecutar.
+    """
+    if os.environ.get("_TASKY_JUST_UPDATED"):
+        return
+    repo_dir = Path(__file__).resolve().parent
+    if not (repo_dir / ".git").exists():
+        return
+    try:
+        before = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo_dir,
+            capture_output=True, text=True, timeout=5,
+        )
+        if before.returncode != 0:
+            return
+        result = subprocess.run(
+            ["git", "pull", "--ff-only"], cwd=repo_dir,
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode != 0:
+            return
+        after = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo_dir,
+            capture_output=True, text=True, timeout=5,
+        )
+        if after.returncode != 0 or after.stdout == before.stdout:
+            return  # ya estaba actualizado
+    except Exception:
+        return
+
+    print("Tasky se actualizó. Reiniciando...")
+    os.environ["_TASKY_JUST_UPDATED"] = "1"
+    os.execv(sys.executable, [sys.executable] + sys.argv)
 
 
 def _check_version() -> None:
@@ -759,27 +830,25 @@ def _check_version() -> None:
         notes = result.data[0].get("notes") or ""
         print()
         print("=" * 52)
-        print("  TASKY — UPDATE REQUIRED")
+        print("  TASKY — NUEVA VERSIÓN DISPONIBLE")
         print("=" * 52)
-        print(f"  Tu versión   : {APP_VERSION}")
-        print(f"  Versión actual : {required}")
+        print(f"  Tu versión     : {APP_VERSION}")
+        print(f"  Última versión : {required}")
         if notes:
-            print(f"  Notas        : {notes}")
+            print(f"  Notas          : {notes}")
         print()
-        print("  Ejecutá:  git pull")
-        print("  Luego reiniciá la app.")
+        print("  La auto-actualización no pudo completarse ahora")
+        print("  (sin conexión, sin repo git, o hay cambios locales).")
+        print("  Corré 'git pull' a mano, o simplemente volvé a iniciar la app.")
         print("=" * 52)
         print()
-        sys.exit(1)
-    except SystemExit:
-        raise
     except Exception:
         pass  # Si falla el check, no bloquear el arranque
 
 
 def main() -> None:
-    if config_exists():
-        _check_version()
+    _auto_update()
+    _check_version()
     TaskManagerApp().run()
 
 

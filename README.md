@@ -47,38 +47,37 @@ pip install textual supabase
 python sqtask.py
 ```
 
-En el primer arranque aparece el **Setup Wizard** automáticamente.
+En el primer arranque aparece la pantalla de **login / crear cuenta** automáticamente. No hace falta compartir ninguna credencial — la conexión a Supabase ya viene incluida en el código.
 
 ---
 
-## Primer arranque — Setup Wizard
+## Primer arranque — Login
 
-Al correr la app por primera vez se pide:
+Al correr la app por primera vez se pide crear una cuenta (email + contraseña vía Supabase Auth):
 
 | Campo | Descripción |
 |---|---|
-| **Supabase URL** | `https://xxxx.supabase.co` — la del proyecto compartido |
-| **Supabase Anon Key** | La clave anon del proyecto |
-| **Username** | Tu identificador único (minúsculas, sin espacios). Ej: `matias` |
-| **Display Name** | Tu nombre visible. Ej: `Matías De Barbora` |
+| **Email** | Tu email real |
+| **Contraseña** | La que quieras usar para entrar a Tasky |
+| **Usuario** | Tu identificador único (minúsculas, sin espacios). Ej: `matias` |
+| **Nombre** | Tu nombre visible. Ej: `Matías De Barbora` |
 
-Al guardar, la app:
-1. Verifica la conexión con Supabase
-2. Crea tu usuario en la tabla `users` si no existe
-3. Guarda la configuración en `~/.tasky/config.json`
+Al crear la cuenta, la app:
+1. Registra el email/contraseña en Supabase Auth (y, si Supabase pide confirmar el email, te avisa para que revises tu casilla antes de poder entrar)
+2. Vincula esa cuenta a tu fila en la tabla `users` — crea una nueva si el usuario no existía, o "reclama" una existente si ya usabas Tasky antes de este login
+3. Guarda la sesión en `~/.tasky/config.json` (se restaura sola en próximos arranques, no hay que volver a loguearse)
 4. Descarga todos los datos del equipo a SQLite local
 
-> El Setup Wizard solo aparece una vez. Para cambiar credenciales, editá manualmente `~/.tasky/config.json`.
+> El login solo se pide en el primer arranque de cada máquina, o si la sesión guardada dejó de ser válida. Para cerrar sesión manualmente, borrá `~/.tasky/config.json`.
 
 ---
 
 ## Incorporar un nuevo integrante
 
-1. Compartirle la Supabase URL y la Anon Key del equipo
-2. `git clone <url-del-repo>`
-3. `pip install textual supabase`
-4. `python sqtask.py` → el Setup Wizard lo guía
-5. Al terminar ya aparece en la lista "Assigned To" del resto del equipo
+1. `git clone <url-del-repo>`
+2. `pip install textual supabase`
+3. `python sqtask.py` → la pantalla de login lo guía, "CREAR UNA CUENTA NUEVA"
+4. Al terminar ya aparece en la lista "Assigned To" del resto del equipo
 
 ---
 
@@ -134,7 +133,7 @@ Cinco tablas en Supabase:
 
 | Tabla | Columnas clave |
 |---|---|
-| `users` | `username PK`, `display_name` |
+| `users` | `username PK`, `display_name`, `email` (nullable, vincula con Supabase Auth) |
 | `projects` | `name PK`, `color` |
 | `tasks` | `id`, `project FK`, `task`, `priority`, `status`, `notes`, `sort_order`, `assigned_to FK→users` |
 | `sub_tasks` | `id`, `task_id FK`, `task`, `status`, `notes`, `sort_order` |
@@ -230,26 +229,16 @@ El script lee las credenciales de `~/.tasky/config.json`, mergea los datos al Su
 
 ## Actualización para usuarios
 
-Al abrir la app, si hay una versión más nueva disponible, aparece un aviso:
+La app se actualiza sola: al abrir `python sqtask.py`, revisa si hay una versión nueva en GitHub, hace `git pull` y se reinicia automáticamente con el código actualizado. Vas a ver un mensaje breve ("Tasky se actualizó. Reiniciando...") cuando eso pasa — no hace falta hacer nada.
 
-```
-══════════════════════════════════════════════
-  TASKY — UPDATE REQUIRED
-══════════════════════════════════════════════
-  Tu versión   : 1.1.0
-  Versión actual : 1.1.1
-  Ejecutá:  git pull
-══════════════════════════════════════════════
-```
+> Tus datos no se tocan: viven en Supabase y en `~/.tasky/tasky.db`, no en los archivos del repo.
 
-Para actualizar:
+Si la auto-actualización no pudo completarse (sin conexión, sin carpeta `.git`, o cambios locales sin commitear), aparece un aviso no bloqueante y hay que actualizar a mano:
 
 ```bash
 git pull
 python sqtask.py
 ```
-
-> Tus datos no se tocan: viven en Supabase y en `~/.tasky/tasky.db`, no en los archivos del repo.
 
 Si `git pull` falla por cambios locales accidentales:
 
@@ -282,7 +271,7 @@ Hay dos casos según lo que cambió:
    INSERT INTO app_version (version, notes)
    VALUES ('1.1.1', 'Descripción breve del cambio');
    ```
-   A partir de este momento los demás usuarios ven el aviso de actualización.
+   A partir de este momento los demás usuarios se actualizan solos en su próximo arranque (auto `git pull`). Este registro es solo para que la app sepa mostrar un aviso si por algún motivo la auto-actualización no pudo completarse.
 
 ---
 
@@ -337,7 +326,7 @@ Ejecutar `supabase_schema.sql` en el SQL Editor de tu proyecto Supabase antes de
 
 | Ruta | Contenido |
 |---|---|
-| `~/.tasky/config.json` | Credenciales, username, preferencias de vista |
+| `~/.tasky/config.json` | Sesión (email, tokens), username, preferencias de vista |
 | `~/.tasky/tasky.db` | Caché SQLite local (se regenera desde Supabase) |
 
-Borrar `tasky.db` es seguro — se recrea en el próximo arranque descargando todo desde Supabase. Borrar `config.json` reinicia el Setup Wizard.
+Borrar `tasky.db` es seguro — se recrea en el próximo arranque descargando todo desde Supabase. Borrar `config.json` cierra la sesión y vuelve a mostrar la pantalla de login.

@@ -2,10 +2,9 @@
 
 Guía para sumarte al gestor de tareas del equipo.
 
-> **Importante:** No necesitás crear una cuenta en Supabase ni migrar ninguna base
-> de datos. Todo el equipo se conecta a un único proyecto Supabase compartido.
-> Pedile a Matías la **Supabase URL** y la **anon key** por un canal privado
-> (mensaje directo o gestor de contraseñas — nunca por mail abierto).
+> **Importante:** No hay nada que pedirle a nadie. La conexión a la base
+> compartida ya viene incluida en el código — solo cloná el repo y creá tu
+> cuenta con tu email y una contraseña la primera vez que abras la app.
 
 ---
 
@@ -39,19 +38,25 @@ pip install textual supabase
 python sqtask.py
 ```
 
-## Paso 4 — Completar el asistente de configuración
+## Paso 4 — Crear tu cuenta
 
-La primera vez aparece un formulario. Completá:
+La primera vez aparece una pantalla de login. Tocá **CREAR UNA CUENTA NUEVA** y completá:
 
-| Campo            | Qué poner                                                        |
-| ---------------- | --------------------------------------------------------------- |
-| **Supabase URL** | La que te pasó Matías (`https://....supabase.co`)               |
-| **Anon Key**     | La que te pasó Matías (`eyJhbGci...`)                           |
-| **Username**     | Tu nombre en minúsculas, sin espacios (ej. `juan`)             |
-| **Display name** | Tu nombre completo (ej. `Juan Pérez`)                          |
+| Campo             | Qué poner                                          |
+| ----------------- | --------------------------------------------------- |
+| **Email**         | Tu email real                                        |
+| **Contraseña**    | La que quieras usar para entrar a Tasky              |
+| **Usuario**       | Tu nombre en minúsculas, sin espacios (ej. `juan`)   |
+| **Nombre**        | Tu nombre completo (ej. `Juan Pérez`)                |
 
-Al guardar, la app valida la conexión, crea tu usuario en la tabla compartida y
-arranca. La configuración queda en `~/.tasky/config.json` y no se vuelve a pedir.
+> Si ya usabas Tasky **antes** de que existiera este login: la app te va a
+> precargar tu username existente. Usalo tal cual para reclamar tus tareas
+> asignadas en vez de crear un usuario duplicado.
+
+Si Supabase pide confirmar el email, revisá tu casilla, hacé click en el link
+y volvé a la app para iniciar sesión (botón **YA TENGO CUENTA**). La sesión
+queda guardada en `~/.tasky/config.json` y no se vuelve a pedir en próximos
+arranques.
 
 ---
 
@@ -93,37 +98,26 @@ cargan.
 
 ## Cómo actualizar la app
 
-Cuando se publica una versión nueva del programa, la próxima vez que lo abras
-**no va a arrancar** y en su lugar vas a ver un mensaje como este:
+No hace falta hacer nada: cada vez que abrís Tasky (`python sqtask.py`), la
+app revisa sola si hay una versión nueva en GitHub, la descarga (`git pull`) y
+se reinicia automáticamente con el código actualizado. Vas a ver un mensaje
+tipo "Tasky se actualizó. Reiniciando..." cuando eso pasa — es normal, esperá
+un segundo y la app vuelve a abrir sola.
 
-```
-====================================================
-  TASKY — UPDATE REQUIRED
-====================================================
-  Tu versión     : 1.0.0
-  Versión actual : 1.1.0
-  Notas          : Qué cambió
+Tus datos no se tocan en ningún caso — viven en Supabase, no en tu computadora.
 
-  Ejecutá:  git pull
-  Luego reiniciá la app.
-====================================================
-```
+### Si ves un aviso de "NUEVA VERSIÓN DISPONIBLE" que no se resuelve solo
 
-Es normal: significa que hay una versión más nueva disponible. Para actualizar,
-parate en la carpeta del proyecto y ejecutá:
+Significa que la auto-actualización no pudo completarse (sin conexión, sin
+carpeta `.git` — por ejemplo si descargaste un ZIP en vez de clonar —, o
+cambios locales sin commitear en algún archivo del proyecto). Fallback manual:
 
 ```bash
 git pull
 python sqtask.py
 ```
 
-`git pull` descarga la última versión desde GitHub y la app vuelve a abrir
-normalmente. Tus datos no se tocan — viven en Supabase, no en tu computadora.
-
-### Si `git pull` da error
-
-Lo más común es que tengas cambios locales sin querer (por ejemplo, tocaste un
-archivo sin darte cuenta). Para descartarlos y traer la versión limpia:
+Si `git pull` da error por cambios locales sin querer:
 
 ```bash
 git stash
@@ -132,7 +126,3 @@ python sqtask.py
 ```
 
 Si el problema persiste, avisale a Matías.
-
-> **Nota:** mientras Supabase esté disponible, la app solo bloquea si hay una
-> versión nueva de verdad. Si no hay internet o Supabase está caído, la app
-> arranca igual para no dejarte trabado.

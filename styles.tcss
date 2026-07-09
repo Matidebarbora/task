@@ -1,6 +1,6 @@
 Screen { background: transparent; }
 
-SetupWizardScreen {
+AuthScreen {
     align: center middle;
 }
 
@@ -10,6 +10,11 @@ SetupWizardScreen {
     padding: 2 4;
     border: heavy #00ff00;
     background: transparent;
+}
+
+#btn-toggle-mode {
+    margin-top: 1;
+    width: 100%;
 }
 
 #status-msg {

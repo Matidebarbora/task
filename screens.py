@@ -112,82 +112,119 @@ class SplashScreen(Screen[None]):
 # SETUP WIZARD  (shown on first run)
 # ---------------------------------------------------------------------------
 
-class SetupWizardScreen(Screen):
+class AuthScreen(Screen):
+    """Login / creación de cuenta con email + contraseña (Supabase Auth).
+
+    Se muestra en el primer arranque (modo "signup") o cuando no se pudo
+    restaurar una sesión guardada (app.py decide el modo según si esta
+    máquina ya hizo login real alguna vez). `prefill_username`/`prefill_display_name`
+    se usan para que alguien que ya usaba Tasky antes de este cambio pueda
+    "reclamar" su username existente en vez de escribirlo de cero.
+    """
+
+    def __init__(
+        self, mode: str = "login",
+        prefill_username: str | None = None,
+        prefill_display_name: str | None = None,
+    ) -> None:
+        super().__init__()
+        self.mode = mode
+        self._prefill_username = prefill_username or ""
+        self._prefill_display_name = prefill_display_name or ""
 
     def compose(self):
         with Vertical(id="wizard"):
-            yield Label("[bold cyan]TASKY — FIRST TIME SETUP[/bold cyan]", id="dialog-title")
-            yield Label("Supabase URL:")
-            yield Input(placeholder="https://xxxx.supabase.co", id="input-url")
-            yield Label("Supabase Anon Key:")
-            yield Input(placeholder="eyJ...", password=True, id="input-key")
-            yield Label("Your username (lowercase, no spaces):")
-            yield Input(placeholder="e.g. matias", id="input-username")
-            yield Label("Your display name:")
-            yield Input(placeholder="e.g. Matías De Barbora", id="input-display")
+            yield Label("", id="dialog-title")
+            yield Label("Email:")
+            yield Input(placeholder="vos@ejemplo.com", id="input-email")
+            yield Label("Contraseña:")
+            yield Input(placeholder="••••••••", password=True, id="input-password")
+            yield Label("Tu usuario (minúsculas, sin espacios):", id="label-username")
+            yield Input(placeholder="ej: matias", id="input-username", value=self._prefill_username)
+            yield Label("Tu nombre:", id="label-display")
+            yield Input(placeholder="ej: Matías De Barbora", id="input-display", value=self._prefill_display_name)
             yield Label("", id="status-msg")
             with Horizontal(id="dialog-buttons"):
-                yield Button("CONNECT & SAVE", variant="success", id="btn-save")
+                yield Button("", variant="success", id="btn-submit")
+            yield Button("", variant="default", id="btn-toggle-mode")
 
     def on_mount(self) -> None:
-        color = "#00FF00"
         try:
-            self.query_one("#wizard").styles.border = ("heavy", color)
+            self.query_one("#wizard").styles.border = ("heavy", "#00FF00")
         except Exception:
             pass
+        self._apply_mode()
+
+    def _apply_mode(self, clear_status: bool = True) -> None:
+        signup = self.mode == "signup"
+        self.query_one("#dialog-title", Label).update(
+            "[bold cyan]TASKY — CREAR CUENTA[/]" if signup else "[bold cyan]TASKY — INICIAR SESIÓN[/]"
+        )
+        for wid in ("#label-username", "#input-username", "#label-display", "#input-display"):
+            self.query_one(wid).display = signup
+        self.query_one("#btn-submit", Button).label = "CREAR CUENTA" if signup else "INICIAR SESIÓN"
+        self.query_one("#btn-toggle-mode", Button).label = (
+            "YA TENGO CUENTA" if signup else "CREAR UNA CUENTA NUEVA"
+        )
+        if clear_status:
+            self.query_one("#status-msg", Label).update("")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id != "btn-save":
+        if event.button.id == "btn-toggle-mode":
+            self.mode = "login" if self.mode == "signup" else "signup"
+            self._apply_mode()
+            return
+        if event.button.id != "btn-submit":
             return
 
-        url = self.query_one("#input-url", Input).value.strip().rstrip("/")
-        key = self.query_one("#input-key", Input).value.strip()
-        username = self.query_one("#input-username", Input).value.strip().lower()
-        display_name = self.query_one("#input-display", Input).value.strip()
+        email = self.query_one("#input-email", Input).value.strip().lower()
+        password = self.query_one("#input-password", Input).value
 
-        if not url or not key or not username or not display_name:
-            self.app.notify("All fields are required.", severity="error")
+        if not email or not password:
+            self.app.notify("Email y contraseña son obligatorios.", severity="error")
             return
 
         event.button.disabled = True
-        self.query_one("#status-msg", Label).update("[yellow]Testing connection...[/]")
-        self._connect(url, key, username, display_name)
+        if self.mode == "signup":
+            username = self.query_one("#input-username", Input).value.strip().lower()
+            display_name = self.query_one("#input-display", Input).value.strip()
+            if not username or not display_name:
+                self.app.notify("Usuario y nombre son obligatorios.", severity="error")
+                event.button.disabled = False
+                return
+            self.query_one("#status-msg", Label).update("[yellow]Creando cuenta...[/]")
+            self._do_signup(email, password, username, display_name)
+        else:
+            self.query_one("#status-msg", Label).update("[yellow]Iniciando sesión...[/]")
+            self._do_login(email, password)
 
     @work(thread=True)
-    def _connect(self, url: str, key: str, username: str, display_name: str) -> None:
-        try:
-            from supabase import create_client
-            client = create_client(url, key)
-            client.table("projects").select("name").limit(1).execute()
+    def _do_signup(self, email: str, password: str, username: str, display_name: str) -> None:
+        from db import db_auth_sign_up
+        result = db_auth_sign_up(email, password, username, display_name)
+        self.app.call_from_thread(self._on_result, result)
 
-            existing = client.table("users").select("username").eq("username", username).execute()
-            if not existing.data:
-                client.table("users").insert({
-                    "username": username,
-                    "display_name": display_name,
-                }).execute()
+    @work(thread=True)
+    def _do_login(self, email: str, password: str) -> None:
+        from db import db_auth_sign_in
+        result = db_auth_sign_in(email, password)
+        self.app.call_from_thread(self._on_result, result)
 
-            from config import save_config, DEFAULT_VIEW_SETTINGS
-            save_config({
-                "supabase_url": url,
-                "supabase_key": key,
-                "username": username,
-                "display_name": display_name,
-                "view_settings": DEFAULT_VIEW_SETTINGS.copy(),
-            })
-            self.app.call_from_thread(self._on_success)
-        except Exception as e:
-            self.app.call_from_thread(self._on_error, str(e))
-
-    def _on_success(self) -> None:
-        self.dismiss(True)
-
-    def _on_error(self, error: str) -> None:
-        try:
-            self.query_one("#status-msg", Label).update(f"[bold red]{error}[/]")
-            self.query_one("#btn-save", Button).disabled = False
-        except Exception:
-            pass
+    def _on_result(self, result: dict) -> None:
+        status = result.get("status")
+        if status in ("ok", "logged_in"):
+            self.dismiss(True)
+        elif status == "confirm_email":
+            self.mode = "login"
+            self._apply_mode(clear_status=False)
+            self.query_one("#status-msg", Label).update(
+                f"[bold cyan]Cuenta creada. Revisá {result['email']} y confirmá tu cuenta, "
+                f"después iniciá sesión acá.[/]"
+            )
+            self.query_one("#btn-submit", Button).disabled = False
+        else:
+            self.query_one("#status-msg", Label).update(f"[bold red]{result.get('message', 'Error desconocido')}[/]")
+            self.query_one("#btn-submit", Button).disabled = False
 
 
 # ---------------------------------------------------------------------------
@@ -336,51 +373,58 @@ class UpdateGuideScreen(ModalScreen[None]):
     cambios llegarán a Supabase en cuanto se restablezca.
 
 
-[bold yellow]━━━  PRIMER ARRANQUE — SETUP WIZARD  ━━━━━━━━━━━━━━━━[/]
+[bold yellow]━━━  PRIMER ARRANQUE — LOGIN  ━━━━━━━━━━━━━━━━━━━━━━━[/]
 
-  Al correr la app por primera vez aparece el [bold]Setup Wizard[/].
-  Pedirá cuatro datos:
+  Al correr la app por primera vez aparece la pantalla de
+  [bold]login[/]. No hace falta compartir ninguna credencial: la
+  conexión a Supabase ya viene incluida en el código.
 
-    · [bold]Supabase URL[/]      → La URL compartida del equipo.
-                         Ej: https://xxxx.supabase.co
-    · [bold]Supabase Anon Key[/] → La clave anon del proyecto.
-    · [bold]Username[/]          → Tu identificador (minúsculas,
-                         sin espacios). Ej: matias
-    · [bold]Display Name[/]      → Tu nombre visible. Ej: Matías DB
+  Tocá [bold]CREAR UNA CUENTA NUEVA[/] y completá:
 
-  Al guardar, la app:
-    1. Verifica la conexión con Supabase.
-    2. Crea tu usuario en la tabla [dim]users[/] si no existe.
-    3. Guarda la configuración en [dim]~/.tasky/config.json[/].
+    · [bold]Email[/]     → Tu email real.
+    · [bold]Contraseña[/] → La que quieras usar para entrar.
+    · [bold]Usuario[/]   → Tu identificador (minúsculas,
+                   sin espacios). Ej: matias
+    · [bold]Nombre[/]    → Tu nombre visible. Ej: Matías DB
+
+  Al crear la cuenta, la app:
+    1. Registra el email/contraseña en Supabase Auth.
+    2. Vincula la cuenta a tu fila en la tabla [dim]users[/] (crea
+       una nueva, o "reclama" tu usuario existente si ya
+       usabas Tasky antes de este login).
+    3. Guarda la sesión en [dim]~/.tasky/config.json[/] — se
+       restaura sola en próximos arranques.
     4. Descarga todos los datos del equipo a SQLite local.
 
-  [dim]El Setup Wizard solo aparece una vez. Para cambiar credenciales,
-  editá manualmente ~/.tasky/config.json.[/]
+  [dim]Si Supabase pide confirmar el email, revisá tu casilla y
+  volvé acá con "YA TENGO CUENTA" para iniciar sesión. Para
+  cerrar sesión manualmente, borrá ~/.tasky/config.json.[/]
 
 
 [bold yellow]━━━  USUARIOS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
 
   No existe un panel de administración de usuarios.
   Cada persona [bold]se registra sola[/] al correr la app por primera
-  vez en su máquina. Ese primer arranque:
+  vez en su máquina, creando su cuenta con email y contraseña.
+  Ese primer login:
 
-    · Pide sus datos (username, display name).
+    · Pide sus datos (email, contraseña, username, display name).
     · Inserta su usuario en la tabla compartida [dim]users[/].
     · A partir de ese momento aparece como opción en el
       selector "Assigned To" del resto del equipo.
 
-  [bold]Importante:[/] un usuario tiene que haber hecho su setup al
+  [bold]Importante:[/] un usuario tiene que haber creado su cuenta al
   menos una vez para que puedas asignarle tareas. Si intentás
   asignar antes, no aparecerá en la lista.
 
   [bold]Pasos para incorporar a un nuevo integrante:[/]
 
-    1. Compartirle la Supabase URL y la Anon Key del equipo.
-    2. Que clone el repo:  [bold]git clone <url-del-repo>[/]
-    3. Que instale deps:   [bold]pip install textual supabase[/]
-    4. Que corra la app:   [bold]python sqtask.py[/]
-    5. El Setup Wizard lo guía. Al terminar ya existe en el
-       sistema y cualquiera puede asignarle tareas.
+    1. Que clone el repo:  [bold]git clone <url-del-repo>[/]
+    2. Que instale deps:   [bold]pip install textual supabase[/]
+    3. Que corra la app:   [bold]python sqtask.py[/]
+    4. La pantalla de login lo guía, "CREAR UNA CUENTA NUEVA".
+       Al terminar ya existe en el sistema y cualquiera puede
+       asignarle tareas.
 
 
 [bold yellow]━━━  PROYECTOS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]
@@ -526,7 +570,9 @@ class UpdateGuideScreen(ModalScreen[None]):
   [bold cyan]ctrl+f[/]   Filtros y vista
   [bold cyan]ctrl+k[/]   Ocultar / mostrar tareas DONE
   [bold cyan]ctrl+m[/]   Mis tareas / todas las tareas
-  [bold cyan]ctrl+w[/]   Focus Mode (ventana con mis tareas IN PROGRESS)
+  [bold cyan]ctrl+w[/]   Focus Mode (filtra la tabla: solo IN PROGRESS)
+  [bold cyan]ctrl+↓[/]   Desplegar todas las sub-tareas
+  [bold cyan]ctrl+↑[/]   Colapsar todas las sub-tareas
   [bold cyan]ctrl+b[/]   Elegir qué usuario ver
   [bold cyan]ctrl+r[/]   Sincronizar con Supabase ahora
   [bold cyan]ctrl+a[/]   Mostrar / ocultar columna ASSIGNED
@@ -561,15 +607,22 @@ class UpdateGuideScreen(ModalScreen[None]):
 
 [bold yellow]━━━  ACTUALIZAR LA APP — PARA USUARIOS  ━━━━━━━━━━━━[/]
 
-  Al abrir la app verás un aviso "UPDATE REQUIRED" si hay
-  una versión nueva disponible. Hacé esto en la carpeta
+  No hace falta hacer nada. Al abrir la app (python sqtask.py)
+  revisa sola si hay una versión nueva, hace [bold]git pull[/] y se
+  reinicia automáticamente con el código actualizado. Vas a
+  ver un mensaje breve ("Tasky se actualizó. Reiniciando...")
+  cuando eso pasa.
+
+  [dim]Tus datos no se tocan: viven en Supabase y en tu SQLite
+  local (~/.tasky/tasky.db), no en los archivos del repo.[/]
+
+  Si ves un aviso de "NUEVA VERSIÓN DISPONIBLE" que no se
+  resuelve solo (sin conexión, sin carpeta .git, o cambios
+  locales sin commitear), actualizá a mano en la carpeta
   del proyecto:
 
        [bold]git pull[/]
        [bold]python sqtask.py[/]
-
-  [dim]Tus datos no se tocan: viven en Supabase y en tu SQLite
-  local (~/.tasky/tasky.db), no en los archivos del repo.[/]
 
   Si [bold]git pull[/] falla por cambios locales accidentales:
 
@@ -608,8 +661,10 @@ class UpdateGuideScreen(ModalScreen[None]):
     Abrí el [bold]SQL Editor[/] de tu proyecto Supabase y ejecutá:
        [bold]INSERT INTO app_version (version, notes)[/]
        [bold]VALUES ('1.1.0', 'Descripción breve del cambio');[/]
-    Desde este momento, al abrir la app los demás verán el
-    aviso "UPDATE REQUIRED" y deberán hacer [bold]git pull[/].
+    Desde este momento, los demás se actualizan solos en su
+    próximo arranque (auto [bold]git pull[/] + reinicio). Este registro
+    es solo para que la app avise si alguien quedó con una
+    versión vieja y la auto-actualización no pudo completarse.
 
   ──────────────────────────────────────────────────────
 

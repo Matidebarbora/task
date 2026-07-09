@@ -9,8 +9,12 @@
 
 CREATE TABLE IF NOT EXISTS users (
     username     TEXT PRIMARY KEY,
-    display_name TEXT NOT NULL
+    display_name TEXT NOT NULL,
+    email        TEXT UNIQUE
 );
+
+-- Para proyectos ya existentes (creados antes del login con email/contraseña):
+--   ALTER TABLE users ADD COLUMN email TEXT UNIQUE;
 
 CREATE TABLE IF NOT EXISTS projects (
     name  TEXT PRIMARY KEY,

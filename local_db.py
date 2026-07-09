@@ -13,6 +13,12 @@ def _conn() -> sqlite3.Connection:
     return conn
 
 
+def _migrate_schema(c: sqlite3.Connection) -> None:
+    cols = {row["name"] for row in c.execute("PRAGMA table_info(users)").fetchall()}
+    if "email" not in cols:
+        c.execute("ALTER TABLE users ADD COLUMN email TEXT")
+
+
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _conn() as c:
@@ -23,7 +29,8 @@ def init_db() -> None:
             );
             CREATE TABLE IF NOT EXISTS users (
                 username     TEXT PRIMARY KEY,
-                display_name TEXT NOT NULL DEFAULT ''
+                display_name TEXT NOT NULL DEFAULT '',
+                email        TEXT
             );
             CREATE TABLE IF NOT EXISTS tasks (
                 id          INTEGER PRIMARY KEY,
@@ -51,6 +58,7 @@ def init_db() -> None:
                 notes    TEXT NOT NULL DEFAULT ''
             );
         """)
+        _migrate_schema(c)
 
 
 def has_local_data() -> bool:
@@ -77,7 +85,10 @@ def local_replace_all(
         for r in projects:
             c.execute("INSERT INTO projects VALUES (?,?)", (r["name"], r["color"]))
         for r in users:
-            c.execute("INSERT INTO users VALUES (?,?)", (r["username"], r["display_name"]))
+            c.execute(
+                "INSERT INTO users (username, display_name, email) VALUES (?,?,?)",
+                (r["username"], r["display_name"], r.get("email")),
+            )
         for r in tasks:
             c.execute(
                 "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)",
@@ -305,12 +316,15 @@ def local_delete_project_log(log_id: int) -> None:
 
 def local_ensure_user(username: str, display_name: str) -> None:
     with _conn() as c:
-        c.execute("INSERT OR IGNORE INTO users VALUES (?,?)", (username, display_name))
+        c.execute(
+            "INSERT OR IGNORE INTO users (username, display_name) VALUES (?,?)",
+            (username, display_name),
+        )
 
 
 def local_get_all_users() -> list[dict]:
     with _conn() as c:
-        rows = c.execute("SELECT username, display_name FROM users ORDER BY username").fetchall()
+        rows = c.execute("SELECT username, display_name, email FROM users ORDER BY username").fetchall()
         return [dict(r) for r in rows]
 
 

@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 python sqtask.py
 ```
 
-On first run, a setup wizard asks for Supabase credentials and username. Config is saved to `~/.tasky/config.json` and never re-asked.
+On first run, an email + password login/signup screen appears. No Supabase URL/key to enter — those are baked into `db.py`. Session is saved to `~/.tasky/config.json` and restored automatically on later launches (no need to log in every time).
 
 ## Dependencies
 
@@ -45,7 +45,16 @@ The app uses **SQLite as the primary store** (`~/.tasky/tasky.db`) and **Supabas
 
 `local_db.py` is the SQLite layer; `db.py` is the public `db_*` API that orchestrates both layers. The rest of the app only imports from `db.py`.
 
-Each user connects with the same `supabase_url` and `supabase_key`, stored locally in `~/.tasky/config.json`. The config also holds the user's `username`, `display_name`, and personal UI preferences (`view_settings`).
+Every user connects with the same `SUPABASE_URL`/`SUPABASE_ANON_KEY`, hardcoded as constants in `db.py` (not user-entered — see "Authentication" below for why that's fine). `~/.tasky/config.json` holds the logged-in user's `email`, `auth_session`, `username`, `display_name`, and personal UI preferences (`view_settings`).
+
+### Authentication
+
+Login is email + password via Supabase Auth (`db.py`'s `db_auth_sign_up`/`db_auth_sign_in`/`db_auth_restore_session`). This is an **identity gate only** — there's no Row Level Security; the anon key keeps reading/writing every table exactly as before. Auth just proves who's logging in and links them to a `users.username` row, so people can no longer type an arbitrary username with zero verification like the old setup wizard allowed.
+
+- `SUPABASE_URL`/`SUPABASE_ANON_KEY` are hardcoded in `db.py`. This is intentional: Supabase anon keys are designed to be public in client apps (RLS is the real security boundary, not the key) — baking them in means onboarding is just `git clone` + `pip install` + run, no shared-secret file to pass around.
+- `users.email` links a Supabase Auth account to an app-level `username`. `_claim_or_create_user_row()` in `db.py` either claims a pre-existing (pre-auth) username row whose `email` is still `NULL`, or creates a new one — atomically, race-safe against two people claiming the same legacy username.
+- If Supabase's "Confirm email" setting is on, `sign_up()` returns no session until the user clicks the confirmation link; `db_auth_sign_up` reports `status: "confirm_email"` and the actual username claim happens on the next successful login (reading `username`/`display_name` back from `user_metadata`).
+- Session tokens (`access_token`/`refresh_token`) are cached in `config.json` via `config.update_config()` (a merge-safe partial update, unlike the full-overwrite `save_config()`) and restored on startup by `db_auth_restore_session()`. A network failure while restoring does **not** force a re-login — only an explicit rejection from Supabase (expired/revoked session) does; this matches the rest of the app's offline-first design.
 
 ### Data model
 
@@ -53,7 +62,7 @@ Five tables in Supabase:
 
 | Table | Key columns |
 |---|---|
-| `users` | `username PK`, `display_name` |
+| `users` | `username PK`, `display_name`, `email` (nullable, links to Supabase Auth) |
 | `projects` | `name PK`, `color` |
 | `tasks` | `id`, `project FK`, `task`, `priority`, `status`, `notes`, `sort_order`, `assigned_to FK→users` |
 | `sub_tasks` | `id`, `task_id FK`, `task`, `status`, `notes`, `sort_order` |
@@ -69,7 +78,7 @@ Sub-tasks have no `assigned_to` — they inherit from the parent task for displa
 
 | Screen | Purpose |
 |---|---|
-| `SetupWizardScreen` | Full screen shown on first run — collects credentials and creates user |
+| `AuthScreen` | Full screen shown on first run / when a session can't be restored — email+password login or signup |
 | `TaskManagerApp` | Main task list (DataTable) |
 | `ProjectLogScreen` | Full-screen milestone log for a project |
 | `TaskFormScreen` | Modal — add/edit task or sub-task, includes assignee selector |
@@ -127,19 +136,20 @@ Notas:
 
 1. Copy or clone the project folder
 2. `pip install textual supabase`
-3. `python sqtask.py` → setup wizard appears
-4. Enter the shared Supabase URL and anon key, plus personal username and display name
+3. `python sqtask.py` → login/signup screen appears
+4. Create an account: email, password, username, display name (no credentials to share — the Supabase connection is baked in)
 
 ## Onboarding a new team member
 
 1. `git clone <repo_url>` (repo privado en GitHub)
 2. `pip install textual supabase`
-3. `python sqtask.py` → el setup wizard aparece automáticamente
-4. Ingresar la Supabase URL y anon key compartidas del equipo, más username y display name propios
+3. `python sqtask.py` → aparece la pantalla de login
+4. "CREAR CUENTA": email, contraseña, username y nombre propios. Si ya usabas Tasky antes de este cambio, usá el **mismo username** que ya tenías (aparece precargado) para reclamar tus tareas asignadas en vez de duplicar el usuario.
+5. Si Supabase pide confirmar el email, revisar la casilla y después volver a la app para iniciar sesión.
 
 ## Workflow de actualización (para el desarrollador)
 
-Cuando hay un cambio que requiere que todos actualicen:
+La app se auto-actualiza (`git pull` automático al iniciar, ver `_auto_update()` en `app.py`). Cuando hay un cambio que lo requiere:
 
 1. Hacer el cambio en el código y pushearlo a GitHub
 2. Si el cambio incluye una modificación de schema, ejecutar el ALTER en el SQL Editor de Supabase y actualizar `supabase_schema.sql`
@@ -150,9 +160,11 @@ Cuando hay un cambio que requiere que todos actualicen:
    ```
 4. Bumpearlo también en `APP_VERSION` en `app.py`
 
-Los usuarios verán un mensaje al iniciar la app y deberán correr `git pull` antes de continuar.
+Los usuarios reciben la actualización solos en su próximo arranque — no tienen que hacer nada. Si el auto-update no pudo completarse (sin conexión, sin repo git, cambios locales sin commitear), ven un aviso no bloqueante sugiriendo `git pull` manual.
 
 ## Workflow de actualización (para cada usuario)
+
+No hace falta hacer nada — `python sqtask.py` se actualiza solo al iniciar. Si por algún motivo no se pudo auto-actualizar (ver aviso en pantalla), como fallback manual:
 
 ```bash
 git pull
