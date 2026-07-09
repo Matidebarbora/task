@@ -32,7 +32,6 @@ from db import (
 )
 from screens import (
     ConfirmScreen,
-    FocusModeScreen,
     HelpScreen,
     PreferencesScreen,
     ProjectLogScreen,
@@ -61,7 +60,9 @@ class TaskManagerApp(App):
         Binding("ctrl+f", "view_filter", "View/Filter", show=False),
         Binding("ctrl+k", "toggle_hide_done", "Hide Done", show=False),
         Binding("ctrl+m", "toggle_my_tasks", "My Tasks", show=False),
-        Binding("ctrl+w", "focus_mode", "Focus Mode", show=True),
+        Binding("ctrl+w", "focus_mode", "In Progress", show=True),
+        Binding("ctrl+down", "expand_all", "Expand All", show=False),
+        Binding("ctrl+up", "collapse_all", "Collapse All", show=False),
         Binding("ctrl+b", "select_user_view", "View User", show=False),
         Binding("ctrl+r", "sync_now", "Sync", show=False),
         Binding("ctrl+a", "toggle_assigned_column", "Hide Assigned", show=False),
@@ -116,6 +117,7 @@ class TaskManagerApp(App):
         self.current_user: str = cfg["username"]
         self.view_user: str | None = self.current_user
         self.hide_assigned: bool = True
+        self.focus_mode: bool = False
 
         self.data = db_load_data()
         self.expanded_rows: set[str] = set()
@@ -167,7 +169,7 @@ class TaskManagerApp(App):
     def compose(self) -> ComposeResult:
         with Horizontal(id="top-bar"):
             yield Static("TASKY", id="app-title")
-        yield DataTable(id="task-table", cursor_type="row")
+        yield DataTable(id="task-table", cursor_type="row", cursor_foreground_priority="renderable")
         yield Footer()
 
     # ------------------------------------------------------------------
@@ -258,6 +260,7 @@ class TaskManagerApp(App):
         all_tasks = _filter_tasks(
             all_tasks, view, self.hide_done,
             getattr(self, "view_user", None),
+            getattr(self, "focus_mode", False),
         )
         all_tasks = _sort_tasks(all_tasks, view)
 
@@ -272,10 +275,15 @@ class TaskManagerApp(App):
             task_db_id = t["_id"]
             row_key = f"task::{task_db_id}"
             sub_tasks = t.get("sub_tasks", [])
-            visible_subs = [s for s in sub_tasks if s.get("status") != "DONE"] if self.hide_done else sub_tasks
+            if self.focus_mode:
+                visible_subs = [s for s in sub_tasks if s.get("status") == "IN PROGRESS"]
+            else:
+                visible_subs = [s for s in sub_tasks if s.get("status") != "DONE"] if self.hide_done else sub_tasks
+
+            is_expanded = row_key in self.expanded_rows or (self.focus_mode and visible_subs)
 
             indicator = (
-                "[bold cyan]▼[/] " if row_key in self.expanded_rows
+                "[bold cyan]▼[/] " if is_expanded
                 else "[bold white]▶[/] "
             ) if visible_subs else "  "
 
@@ -285,9 +293,12 @@ class TaskManagerApp(App):
             row_values.append(t.get("notes", "") or "")
             table.add_row(*row_values, key=row_key)
 
-            if row_key in self.expanded_rows:
+            if is_expanded:
                 for sub in sub_tasks:
-                    if self.hide_done and sub.get("status") == "DONE":
+                    if self.focus_mode:
+                        if sub.get("status") != "IN PROGRESS":
+                            continue
+                    elif self.hide_done and sub.get("status") == "DONE":
                         continue
                     sub_values = [
                         "", "",
@@ -318,6 +329,17 @@ class TaskManagerApp(App):
             self.expanded_rows.remove(row_key)
         else:
             self.expanded_rows.add(row_key)
+        self.populate_table()
+
+    def action_expand_all(self) -> None:
+        for project, tlist in self.data.get("projects", {}).items():
+            for t in tlist:
+                if t.get("sub_tasks"):
+                    self.expanded_rows.add(f"task::{t['_id']}")
+        self.populate_table()
+
+    def action_collapse_all(self) -> None:
+        self.expanded_rows.clear()
         self.populate_table()
 
     # ------------------------------------------------------------------
@@ -610,19 +632,10 @@ class TaskManagerApp(App):
         self.populate_table()
 
     def action_focus_mode(self) -> None:
-        items = []
-        for project, tlist in self.data.get("projects", {}).items():
-            for t in tlist:
-                if t.get("status") == "IN PROGRESS" and t.get("assigned_to") == self.current_user:
-                    items.append((project, t))
-                if t.get("assigned_to") == self.current_user:
-                    for sub in t.get("sub_tasks", []):
-                        if sub.get("status") == "IN PROGRESS":
-                            items.append((project, {
-                                "task": f"↳ [dim white]{t['task']}[/]\n   [white]{sub['task']}[/]",
-                                "notes": sub.get("notes"),
-                            }))
-        self.push_screen(FocusModeScreen(items))
+        self.focus_mode = not self.focus_mode
+        status_msg = "ON — solo IN PROGRESS" if self.focus_mode else "OFF"
+        self.notify(f"FOCUS MODE {status_msg}", severity="information")
+        self.populate_table()
 
     def action_select_user_view(self) -> None:
         users = db_get_users()
@@ -675,6 +688,7 @@ def _filter_tasks(
     view: dict,
     hide_done: bool,
     view_user: str | None = None,
+    focus_mode: bool = False,
 ) -> list:
     if view.get("filter_project"):
         all_tasks = [x for x in all_tasks if x[0] == view["filter_project"]]
@@ -684,6 +698,12 @@ def _filter_tasks(
         all_tasks = [x for x in all_tasks if x[1].get("status") != "DONE"]
     if view_user:
         all_tasks = [x for x in all_tasks if x[1].get("assigned_to") == view_user]
+    if focus_mode:
+        all_tasks = [
+            x for x in all_tasks
+            if x[1].get("status") == "IN PROGRESS"
+            or any(s.get("status") == "IN PROGRESS" for s in x[1].get("sub_tasks", []))
+        ]
     return all_tasks
 
 

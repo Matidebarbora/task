@@ -80,7 +80,6 @@ Sub-tasks have no `assigned_to` — they inherit from the parent task for displa
 | `LogDetailScreen` | Modal — read-only view of a log entry |
 | `ConfirmScreen` | Modal — generic yes/no confirmation |
 | `HelpScreen` | Modal — keybinding reference |
-| `FocusModeScreen` | Modal — small floating window, main screen visible behind, shows only the current user's IN PROGRESS tasks |
 
 ### Row keys
 
@@ -106,7 +105,9 @@ The main DataTable encodes type and DB id into row keys:
 | `ctrl+f` | Filtros / vista |
 | `ctrl+k` | Ocultar/mostrar DONE |
 | `ctrl+m` | Mis tareas / todas |
-| `ctrl+w` | Focus Mode (ventana flotante con mis tareas IN PROGRESS) |
+| `ctrl+w` | Focus Mode (filtra la tabla principal para mostrar solo IN PROGRESS) |
+| `ctrl+flecha abajo` | Desplegar todas las tareas (subtareas) |
+| `ctrl+flecha arriba` | Colapsar todas las tareas |
 | `ctrl+a` | Ocultar/mostrar columna ASSIGNED |
 | `ctrl+p` | Preferencias |
 | `ctrl+l` | Log del proyecto (estando sobre una tarea) |
@@ -119,7 +120,7 @@ The main DataTable encodes type and DB id into row keys:
 Notas:
 - `ENABLE_COMMAND_PALETTE = False` en `TaskManagerApp` desactiva el command palette de Textual para liberar `ctrl+p`.
 - Las tareas nuevas se autoasignan al usuario actual (`action_add_task` pasa `task_data={"assigned_to": self.current_user}`). Editar una tarea respeta el responsable existente.
-- `hide_assigned` y `my_tasks_only` son estado en memoria (no persisten); `hide_done` y los colores sí persisten en el config local.
+- `hide_assigned`, `my_tasks_only` (view_user) y `focus_mode` son estado en memoria (no persisten); `hide_done` y los colores sí persisten en el config local.
 - La columna ASSIGNED se agrega/quita recreando las columnas del DataTable (`table.clear(columns=True)`), por eso las filas se construyen con un número variable de valores.
 
 ## Adding a new user

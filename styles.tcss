@@ -42,6 +42,13 @@ DataTable {
     height: 1fr;
 }
 
+DataTable > .datatable--cursor,
+DataTable:focus > .datatable--cursor {
+    background: #303030;
+    color: $text;
+    text-style: none;
+}
+
 Header,
 HeaderTitle,
 HeaderIcon,

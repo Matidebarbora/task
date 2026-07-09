@@ -1329,65 +1329,6 @@ class UserManagerScreen(ModalScreen[dict | None]):
             pass
 
 
-class FocusModeScreen(ModalScreen[None]):
-    """Ventana pequeña y flotante: solo mis tareas IN PROGRESS.
-    Fondo principal visible.
-    """
-    DEFAULT_CSS = """
-    FocusModeScreen {
-        background: transparent;
-        align: center middle;
-    }
-    #focus-box {
-        width: 140;
-        max-height: 40;
-        padding: 1 2;
-    }
-    """
-    BINDINGS = [
-        ("escape", "close", "Close"),
-        ("ctrl+w", "close", "Close"),
-    ]
-
-    def __init__(self, tasks: list[tuple[str, dict]]):
-        super().__init__()
-        self.tasks = tasks
-
-    def compose(self):
-        with Vertical(id="focus-box"):
-            yield Label("[bold cyan]FOCUS MODE — IN PROGRESS[/]", id="dialog-title")
-            if not self.tasks:
-                yield Label("[dim]No tenés tareas IN PROGRESS.[/]")
-            else:
-                yield DataTable(show_header=True, id="focus-table")
-            with Horizontal(id="dialog-buttons"):
-                yield Button("CERRAR", variant="primary", id="btn-close")
-
-    def on_mount(self) -> None:
-        color = getattr(self.app, "app_border", "#00FF00")
-        bg = getattr(self.app, "app_bg", "") or "#1e1e1e"
-        try:
-            box = self.query_one("#focus-box")
-            box.styles.border = ("heavy", color)
-            box.styles.background = bg
-        except Exception:
-            pass
-        if self.tasks:
-            table = self.query_one("#focus-table", DataTable)
-            table.styles.height = "auto"
-            table.styles.border = ("none", "transparent")
-            table.add_columns("PROJECT", "TASK", "NOTES")
-            for proj, t in self.tasks:
-                table.add_row(f"[cyan bold]{proj}[/]", t["task"], t.get("notes", "") or "", height=None)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-close":
-            self.dismiss(None)
-
-    def action_close(self) -> None:
-        self.dismiss(None)
-
-
 class UserSelectorScreen(ModalScreen[dict | None]):
     """Popup pequeño y centrado para elegir qué usuario ver.
     Fondo principal visible. Solo teclado: Tab, flechas, Enter, Escape.
