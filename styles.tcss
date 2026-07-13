@@ -1,6 +1,8 @@
 Screen { background: transparent; }
 
-AuthScreen {
+AuthScreen,
+OtpVerifyScreen,
+PasswordResetScreen {
     align: center middle;
 }
 

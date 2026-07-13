@@ -56,7 +56,10 @@ Login is email + password via Supabase Auth (`db.py`'s `db_auth_sign_up`/`db_aut
 
 - `SUPABASE_URL`/`SUPABASE_ANON_KEY` are hardcoded in `db.py`. This is intentional: Supabase anon keys are designed to be public in client apps (RLS is the real security boundary, not the key) — baking them in means onboarding is just `git clone` + `pip install` + run, no shared-secret file to pass around.
 - `users.email` links a Supabase Auth account to an app-level `username`. `_claim_or_create_user_row()` in `db.py` either claims a pre-existing (pre-auth) username row whose `email` is still `NULL`, or creates a new one — atomically, race-safe against two people claiming the same legacy username.
-- If Supabase's "Confirm email" setting is on, `sign_up()` returns no session until the user clicks the confirmation link; `db_auth_sign_up` reports `status: "confirm_email"` and the actual username claim happens on the next successful login (reading `username`/`display_name` back from `user_metadata`).
+- **Validación del email con código de 6 dígitos (OTP).** Con "Confirm email" activo en Supabase, `sign_up()` no devuelve sesión hasta confirmar; `db_auth_sign_up` reporta `status: "confirm_email"` y la app abre `OtpVerifyScreen` para que el usuario ingrese el código de 6 dígitos que llega al mail. `db_auth_verify_signup_otp()` llama `sb.auth.verify_otp(type="signup"/"email")`, reclama el username desde `user_metadata` y deja la sesión iniciada. `db_auth_resend_signup_otp()` reenvía el código.
+- **Reset de contraseña por email.** `PasswordResetScreen` (botón "¿Olvidaste tu contraseña?" en el login) manda un código con `db_auth_send_password_reset()` (`reset_password_for_email`), y `db_auth_reset_password_with_otp()` verifica el código (`verify_otp(type="recovery")`) + `update_user({password})`, dejando la sesión iniciada.
+- **REQUIERE configuración en el dashboard de Supabase** para que lleguen los códigos de 6 dígitos: (1) Authentication → activar "Confirm email"; (2) Authentication → Email Templates → editar **"Confirm signup"** y **"Reset Password"** para que incluyan el token `{{ .Token }}` (ese es el código de 6 dígitos). Sin esto, o no llega código o llega solo un link.
+- **"Recordar sesión" (opcional).** `AuthScreen` tiene un checkbox (por defecto activado) que se propaga como `remember` a `db_auth_sign_in/sign_up/verify_*`. Si está activado, `_persist_session()` guarda los tokens en `config.json` y se restauran solos al arrancar. Si está **desactivado**, se guarda `auth_session: None` (borrando cualquier sesión previa) y el próximo arranque vuelve a pedir la contraseña. La identidad (email/username/display_name) se guarda igual en ambos casos.
 - Session tokens (`access_token`/`refresh_token`) are cached in `config.json` via `config.update_config()` (a merge-safe partial update, unlike the full-overwrite `save_config()`) and restored on startup by `db_auth_restore_session()`. A network failure while restoring does **not** force a re-login — only an explicit rejection from Supabase (expired/revoked session) does; this matches the rest of the app's offline-first design.
 
 ### Data model
@@ -81,7 +84,9 @@ Sub-tasks have no `assigned_to` — they inherit from the parent task for displa
 
 | Screen | Purpose |
 |---|---|
-| `AuthScreen` | Full screen shown on first run / when a session can't be restored — email+password login or signup |
+| `AuthScreen` | Full screen shown on first run / when a session can't be restored — email+password login or signup; incluye checkbox "Recordar sesión" y botón "¿Olvidaste tu contraseña?" |
+| `OtpVerifyScreen` | Full screen — validación del email con código de 6 dígitos tras crear cuenta (con reenviar) |
+| `PasswordResetScreen` | Full screen — recuperar contraseña: envía código de 6 dígitos y define una nueva |
 | `TaskManagerApp` | Main task list (DataTable) |
 | `ProjectLogScreen` | Full-screen milestone log for a project |
 | `TaskFormScreen` | Modal — add/edit task or sub-task, includes assignee selector |

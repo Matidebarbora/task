@@ -5,7 +5,7 @@ from textual import on, work
 from textual.binding import Binding
 from textual.containers import Center, Horizontal, Middle, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, DataTable, Footer, Input, Label, Select, Static, TextArea
+from textual.widgets import Button, Checkbox, DataTable, Footer, Input, Label, Select, Static, TextArea
 
 from db import (
     db_add_project_log,
@@ -143,10 +143,12 @@ class AuthScreen(Screen):
             yield Input(placeholder="ej: matias", id="input-username", value=self._prefill_username)
             yield Label("Tu nombre:", id="label-display")
             yield Input(placeholder="ej: Matías De Barbora", id="input-display", value=self._prefill_display_name)
+            yield Checkbox("Recordar sesión (no pedir la contraseña la próxima vez)", value=True, id="chk-remember")
             yield Label("", id="status-msg")
             with Horizontal(id="dialog-buttons"):
                 yield Button("", variant="success", id="btn-submit")
             yield Button("", variant="default", id="btn-toggle-mode")
+            yield Button("¿Olvidaste tu contraseña?", variant="default", id="btn-forgot")
 
     def on_mount(self) -> None:
         try:
@@ -166,13 +168,24 @@ class AuthScreen(Screen):
         self.query_one("#btn-toggle-mode", Button).label = (
             "YA TENGO CUENTA" if signup else "CREAR UNA CUENTA NUEVA"
         )
+        # "¿Olvidaste tu contraseña?" solo aplica al iniciar sesión.
+        self.query_one("#btn-forgot").display = not signup
         if clear_status:
             self.query_one("#status-msg", Label).update("")
+
+    def _remember(self) -> bool:
+        return self.query_one("#chk-remember", Checkbox).value
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-toggle-mode":
             self.mode = "login" if self.mode == "signup" else "signup"
             self._apply_mode()
+            return
+        if event.button.id == "btn-forgot":
+            email = self.query_one("#input-email", Input).value.strip().lower()
+            self.app.push_screen(
+                PasswordResetScreen(email, self._remember()), self._on_reset_done
+            )
             return
         if event.button.id != "btn-submit":
             return
@@ -184,6 +197,7 @@ class AuthScreen(Screen):
             self.app.notify("Email y contraseña son obligatorios.", severity="error")
             return
 
+        remember = self._remember()
         event.button.disabled = True
         if self.mode == "signup":
             username = self.query_one("#input-username", Input).value.strip().lower()
@@ -193,21 +207,21 @@ class AuthScreen(Screen):
                 event.button.disabled = False
                 return
             self.query_one("#status-msg", Label).update("[yellow]Creando cuenta...[/]")
-            self._do_signup(email, password, username, display_name)
+            self._do_signup(email, password, username, display_name, remember)
         else:
             self.query_one("#status-msg", Label).update("[yellow]Iniciando sesión...[/]")
-            self._do_login(email, password)
+            self._do_login(email, password, remember)
 
     @work(thread=True)
-    def _do_signup(self, email: str, password: str, username: str, display_name: str) -> None:
+    def _do_signup(self, email: str, password: str, username: str, display_name: str, remember: bool) -> None:
         from db import db_auth_sign_up
-        result = db_auth_sign_up(email, password, username, display_name)
+        result = db_auth_sign_up(email, password, username, display_name, remember)
         self.app.call_from_thread(self._on_result, result)
 
     @work(thread=True)
-    def _do_login(self, email: str, password: str) -> None:
+    def _do_login(self, email: str, password: str, remember: bool) -> None:
         from db import db_auth_sign_in
-        result = db_auth_sign_in(email, password)
+        result = db_auth_sign_in(email, password, remember)
         self.app.call_from_thread(self._on_result, result)
 
     def _on_result(self, result: dict) -> None:
@@ -215,16 +229,217 @@ class AuthScreen(Screen):
         if status in ("ok", "logged_in"):
             self.dismiss(True)
         elif status == "confirm_email":
-            self.mode = "login"
-            self._apply_mode(clear_status=False)
+            # La cuenta se creó pero falta validar el email con el código de 6
+            # dígitos. Abrimos la pantalla de verificación.
             self.query_one("#status-msg", Label).update(
-                f"[bold cyan]Cuenta creada. Revisá {result['email']} y confirmá tu cuenta, "
-                f"después iniciá sesión acá.[/]"
+                f"[bold cyan]Te enviamos un código a {result['email']}.[/]"
             )
             self.query_one("#btn-submit", Button).disabled = False
+            self.app.push_screen(
+                OtpVerifyScreen(result["email"], self._remember()), self._on_otp_done
+            )
         else:
             self.query_one("#status-msg", Label).update(f"[bold red]{result.get('message', 'Error desconocido')}[/]")
             self.query_one("#btn-submit", Button).disabled = False
+
+    def _on_otp_done(self, success: bool | None) -> None:
+        if success:
+            self.dismiss(True)
+
+    def _on_reset_done(self, success: bool | None) -> None:
+        # verify_otp(recovery) deja la sesión iniciada, así que un reset exitoso
+        # equivale a haber logueado.
+        if success:
+            self.dismiss(True)
+
+
+# ---------------------------------------------------------------------------
+# EMAIL OTP — verificación de cuenta y recuperación de contraseña
+# ---------------------------------------------------------------------------
+
+class OtpVerifyScreen(Screen[bool]):
+    """Verificación del email con el código de 6 dígitos tras crear la cuenta."""
+
+    BINDINGS = [("escape", "cancel", "Cancelar")]
+
+    def __init__(self, email: str, remember: bool = True) -> None:
+        super().__init__()
+        self.email = email
+        self.remember = remember
+
+    def compose(self):
+        with Vertical(id="wizard"):
+            yield Label("[bold cyan]VERIFICÁ TU EMAIL[/]", id="dialog-title")
+            yield Label(f"Ingresá el código de 6 dígitos que enviamos a:\n[bold]{self.email}[/]")
+            yield Label("Código:")
+            yield Input(placeholder="123456", max_length=6, id="input-otp")
+            yield Label("", id="status-msg")
+            with Horizontal(id="dialog-buttons"):
+                yield Button("VERIFICAR", variant="success", id="btn-verify")
+            yield Button("Reenviar código", variant="default", id="btn-resend")
+            yield Button("Volver", variant="default", id="btn-back")
+
+    def on_mount(self) -> None:
+        try:
+            self.query_one("#wizard").styles.border = ("heavy", "#00FF00")
+        except Exception:
+            pass
+        self.query_one("#input-otp", Input).focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-back":
+            self.dismiss(False)
+            return
+        if event.button.id == "btn-resend":
+            self.query_one("#status-msg", Label).update("[yellow]Reenviando código...[/]")
+            self._resend()
+            return
+        if event.button.id != "btn-verify":
+            return
+        code = self.query_one("#input-otp", Input).value.strip()
+        if len(code) < 6:
+            self.app.notify("Ingresá el código de 6 dígitos.", severity="error")
+            return
+        event.button.disabled = True
+        self.query_one("#status-msg", Label).update("[yellow]Verificando...[/]")
+        self._verify(code)
+
+    @work(thread=True)
+    def _verify(self, code: str) -> None:
+        from db import db_auth_verify_signup_otp
+        result = db_auth_verify_signup_otp(self.email, code, self.remember)
+        self.app.call_from_thread(self._on_result, result)
+
+    @work(thread=True)
+    def _resend(self) -> None:
+        from db import db_auth_resend_signup_otp
+        result = db_auth_resend_signup_otp(self.email)
+        self.app.call_from_thread(self._on_resend, result)
+
+    def _on_resend(self, result: dict) -> None:
+        if result.get("status") == "ok":
+            self.query_one("#status-msg", Label).update("[green]Código reenviado. Revisá tu correo.[/]")
+        else:
+            self.query_one("#status-msg", Label).update(
+                f"[bold red]{result.get('message', 'No se pudo reenviar.')}[/]"
+            )
+
+    def _on_result(self, result: dict) -> None:
+        if result.get("status") == "ok":
+            self.dismiss(True)
+        else:
+            self.query_one("#status-msg", Label).update(f"[bold red]{result.get('message', 'Error')}[/]")
+            self.query_one("#btn-verify", Button).disabled = False
+
+
+class PasswordResetScreen(Screen[bool]):
+    """Recuperar contraseña: envía un código de 6 dígitos al email y permite
+    definir una nueva contraseña. Tiene dos fases: pedir el código y cambiar la
+    contraseña."""
+
+    BINDINGS = [("escape", "cancel", "Cancelar")]
+
+    def __init__(self, email: str = "", remember: bool = True) -> None:
+        super().__init__()
+        self._prefill_email = email or ""
+        self.remember = remember
+        self.email = self._prefill_email
+        self.phase = "request"  # "request" -> "reset"
+
+    def compose(self):
+        with Vertical(id="wizard"):
+            yield Label("[bold cyan]RECUPERAR CONTRASEÑA[/]", id="dialog-title")
+            yield Label("Email:")
+            yield Input(placeholder="vos@ejemplo.com", id="input-email", value=self._prefill_email)
+            yield Label("Código de 6 dígitos:", id="label-otp")
+            yield Input(placeholder="123456", max_length=6, id="input-otp")
+            yield Label("Nueva contraseña:", id="label-newpass")
+            yield Input(placeholder="••••••••", password=True, id="input-newpass")
+            yield Label("", id="status-msg")
+            with Horizontal(id="dialog-buttons"):
+                yield Button("ENVIAR CÓDIGO", variant="success", id="btn-primary")
+            yield Button("Volver", variant="default", id="btn-back")
+
+    def on_mount(self) -> None:
+        try:
+            self.query_one("#wizard").styles.border = ("heavy", "#00FF00")
+        except Exception:
+            pass
+        self._apply_phase()
+        self.query_one("#input-email", Input).focus()
+
+    def _apply_phase(self) -> None:
+        reset = self.phase == "reset"
+        for wid in ("#label-otp", "#input-otp", "#label-newpass", "#input-newpass"):
+            self.query_one(wid).display = reset
+        self.query_one("#input-email", Input).disabled = reset
+        self.query_one("#btn-primary", Button).label = "CAMBIAR CONTRASEÑA" if reset else "ENVIAR CÓDIGO"
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-back":
+            self.dismiss(False)
+            return
+        if event.button.id != "btn-primary":
+            return
+        if self.phase == "request":
+            email = self.query_one("#input-email", Input).value.strip().lower()
+            if not email:
+                self.app.notify("Ingresá tu email.", severity="error")
+                return
+            self.email = email
+            event.button.disabled = True
+            self.query_one("#status-msg", Label).update("[yellow]Enviando código...[/]")
+            self._send(email)
+        else:
+            code = self.query_one("#input-otp", Input).value.strip()
+            newpass = self.query_one("#input-newpass", Input).value
+            if len(code) < 6 or not newpass:
+                self.app.notify("Completá el código y la nueva contraseña.", severity="error")
+                return
+            event.button.disabled = True
+            self.query_one("#status-msg", Label).update("[yellow]Actualizando contraseña...[/]")
+            self._reset(self.email, code, newpass)
+
+    @work(thread=True)
+    def _send(self, email: str) -> None:
+        from db import db_auth_send_password_reset
+        result = db_auth_send_password_reset(email)
+        self.app.call_from_thread(self._on_send, result)
+
+    def _on_send(self, result: dict) -> None:
+        if result.get("status") != "ok":
+            self.query_one("#status-msg", Label).update(
+                f"[bold red]{result.get('message', 'No se pudo enviar el código.')}[/]"
+            )
+            self.query_one("#btn-primary", Button).disabled = False
+            return
+        self.phase = "reset"
+        self._apply_phase()
+        self.query_one("#btn-primary", Button).disabled = False
+        self.query_one("#status-msg", Label).update(
+            "[green]Si el email existe, te llegó un código. Ingresálo y elegí una nueva contraseña.[/]"
+        )
+        self.query_one("#input-otp", Input).focus()
+
+    @work(thread=True)
+    def _reset(self, email: str, code: str, newpass: str) -> None:
+        from db import db_auth_reset_password_with_otp
+        result = db_auth_reset_password_with_otp(email, code, newpass, self.remember)
+        self.app.call_from_thread(self._on_reset, result)
+
+    def _on_reset(self, result: dict) -> None:
+        if result.get("status") == "ok":
+            self.app.notify("Contraseña actualizada. Sesión iniciada.", severity="information")
+            self.dismiss(True)
+        else:
+            self.query_one("#status-msg", Label).update(f"[bold red]{result.get('message', 'Error')}[/]")
+            self.query_one("#btn-primary", Button).disabled = False
 
 
 # ---------------------------------------------------------------------------

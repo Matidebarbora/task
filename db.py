@@ -71,8 +71,13 @@ def _claim_or_create_user_row(email: str, username_hint: str | None, display_nam
     return username_hint
 
 
-def _persist_session(session, email: str, username: str, display_name: str) -> None:
+def _persist_session(session, email: str, username: str, display_name: str, remember: bool = True) -> None:
     from config import update_config
+    # `auth_session` (tokens) solo se guarda si el usuario pidió "recordar
+    # sesión". Si no, se guarda None para BORRAR cualquier sesión previa, así
+    # el próximo arranque vuelve a pedir la contraseña. La identidad
+    # (email/username/display_name) se guarda igual porque la usa la sesión en
+    # curso y sirve para precargar el email en el próximo login.
     update_config({
         "email": email,
         "username": username,
@@ -81,11 +86,11 @@ def _persist_session(session, email: str, username: str, display_name: str) -> N
             "access_token": session.access_token,
             "refresh_token": session.refresh_token,
             "expires_at": session.expires_at,
-        },
+        } if remember else None,
     })
 
 
-def db_auth_sign_up(email: str, password: str, username: str, display_name: str) -> dict:
+def db_auth_sign_up(email: str, password: str, username: str, display_name: str, remember: bool = True) -> dict:
     """Returns {"status": "logged_in"|"confirm_email"|"error", ...}."""
     sb = get_client()
 
@@ -115,11 +120,11 @@ def db_auth_sign_up(email: str, password: str, username: str, display_name: str)
     except _UsernameTakenError:
         return {"status": "error", "message": f"El usuario '{username}' ya está en uso. La cuenta se creó igual — contactá al administrador."}
 
-    _persist_session(resp.session, email, resolved, display_name)
+    _persist_session(resp.session, email, resolved, display_name, remember)
     return {"status": "logged_in", "username": resolved, "display_name": display_name}
 
 
-def db_auth_sign_in(email: str, password: str) -> dict:
+def db_auth_sign_in(email: str, password: str, remember: bool = True) -> dict:
     """Returns {"status": "ok"|"error", ...}."""
     sb = get_client()
     try:
@@ -136,7 +141,93 @@ def db_auth_sign_in(email: str, password: str) -> dict:
         return {"status": "error", "message": "Esta cuenta no tiene un usuario asociado y el que pidió ya está en uso. Contactá al administrador."}
     display_name = meta.get("display_name") or username
 
-    _persist_session(resp.session, resp.user.email, username, display_name)
+    _persist_session(resp.session, resp.user.email, username, display_name, remember)
+    return {"status": "ok", "username": username, "display_name": display_name}
+
+
+# ---------------------------------------------------------------------------
+# EMAIL OTP — validación del email con código de 6 dígitos y reset de
+# contraseña. Requiere que en Supabase esté activado "Confirm email" y que las
+# plantillas de email "Confirm signup" y "Reset password" incluyan el token
+# `{{ .Token }}` (el código de 6 dígitos). Ver CLAUDE.md.
+# ---------------------------------------------------------------------------
+
+def db_auth_verify_signup_otp(email: str, token: str, remember: bool = True) -> dict:
+    """Confirma una cuenta recién creada verificando el código de 6 dígitos que
+    llegó al email. Devuelve {"status": "ok"|"error", ...} y deja la sesión
+    iniciada si el código es válido."""
+    sb = get_client()
+    resp = None
+    last_err = None
+    # Distintas versiones/config usan "signup" o "email" como tipo de OTP.
+    for otp_type in ("signup", "email"):
+        try:
+            resp = sb.auth.verify_otp({"email": email, "token": token, "type": otp_type})
+            if resp and resp.session:
+                break
+        except Exception as e:
+            last_err = e
+            resp = None
+    if resp is None or resp.session is None or resp.user is None:
+        msg = _auth_error_message(last_err) if last_err else "Código inválido o vencido."
+        return {"status": "error", "message": msg}
+
+    meta = resp.user.user_metadata or {}
+    try:
+        username = _claim_or_create_user_row(resp.user.email, meta.get("username"), meta.get("display_name"))
+    except _UsernameTakenError:
+        return {"status": "error", "message": "El usuario ya está en uso. La cuenta se confirmó igual — contactá al administrador."}
+    display_name = meta.get("display_name") or username
+
+    _persist_session(resp.session, resp.user.email, username, display_name, remember)
+    return {"status": "ok", "username": username, "display_name": display_name}
+
+
+def db_auth_resend_signup_otp(email: str) -> dict:
+    """Reenvía el código de confirmación de cuenta."""
+    sb = get_client()
+    try:
+        sb.auth.resend({"type": "signup", "email": email})
+    except Exception as e:
+        return {"status": "error", "message": _auth_error_message(e)}
+    return {"status": "ok"}
+
+
+def db_auth_send_password_reset(email: str) -> dict:
+    """Envía un código de recuperación al email. Por seguridad, Supabase
+    responde OK aunque el email no exista."""
+    sb = get_client()
+    try:
+        sb.auth.reset_password_for_email(email)
+    except Exception as e:
+        return {"status": "error", "message": _auth_error_message(e)}
+    return {"status": "ok"}
+
+
+def db_auth_reset_password_with_otp(email: str, token: str, new_password: str, remember: bool = True) -> dict:
+    """Verifica el código de recuperación (6 dígitos) y define una nueva
+    contraseña. Deja la sesión iniciada."""
+    sb = get_client()
+    try:
+        resp = sb.auth.verify_otp({"email": email, "token": token, "type": "recovery"})
+    except Exception as e:
+        return {"status": "error", "message": _auth_error_message(e)}
+    if resp is None or resp.session is None or resp.user is None:
+        return {"status": "error", "message": "Código inválido o vencido."}
+
+    try:
+        sb.auth.update_user({"password": new_password})
+    except Exception as e:
+        return {"status": "error", "message": _auth_error_message(e)}
+
+    meta = resp.user.user_metadata or {}
+    try:
+        username = _claim_or_create_user_row(resp.user.email, meta.get("username"), meta.get("display_name"))
+    except _UsernameTakenError:
+        return {"status": "error", "message": "El usuario ya está en uso. Contactá al administrador."}
+    display_name = meta.get("display_name") or username
+
+    _persist_session(resp.session, resp.user.email, username, display_name, remember)
     return {"status": "ok", "username": username, "display_name": display_name}
 
 
