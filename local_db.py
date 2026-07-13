@@ -1,16 +1,47 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 
 DB_PATH = Path.home() / ".tasky" / "tasky.db"
 
+# Serializa TODO el acceso a SQLite dentro del proceso. Sin esto, una escritura
+# del hilo de la UI (p. ej. borrar una tarea) puede chocar con la escritura
+# grande de local_replace_all() que corre en el hilo del sync periódico: SQLite
+# admite un solo escritor a la vez, así que el hilo de la UI quedaba bloqueado
+# esperando el lock hasta timeout=10s (la app "pegada") o tiraba
+# "database is locked". Con este lock las operaciones se encolan en Python
+# —cada una es local y rápida— en vez de pelear por el lock de la base.
+_db_lock = threading.RLock()
 
-def _conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+
+class _LockedConn:
+    """Context manager: toma _db_lock, entrega la conexión y la cierra al salir."""
+
+    def __enter__(self) -> sqlite3.Connection:
+        _db_lock.acquire()
+        try:
+            self._conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+        except BaseException:
+            _db_lock.release()
+            raise
+        return self._conn
+
+    def __exit__(self, *exc) -> None:
+        try:
+            self._conn.__exit__(*exc)   # commit si no hubo excepción, si no rollback
+        finally:
+            try:
+                self._conn.close()
+            finally:
+                _db_lock.release()
+
+
+def _conn() -> _LockedConn:
+    return _LockedConn()
 
 
 def _migrate_schema(c: sqlite3.Connection) -> None:

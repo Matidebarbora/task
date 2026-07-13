@@ -48,7 +48,7 @@ from screens import (
     ViewFilterScreen,
 )
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 
 
 class TaskManagerApp(App):
@@ -585,7 +585,9 @@ class TaskManagerApp(App):
         )
 
     def finalize_delete_task(self, confirm: bool | None, task_id: int, sub_id: int | None) -> None:
-        if confirm:
+        if not confirm:
+            return
+        try:
             if sub_id is not None:
                 db_delete_subtask(sub_id)
                 self.notify("SUB-TASK PURGED.", severity="warning")
@@ -594,6 +596,8 @@ class TaskManagerApp(App):
                 self.expanded_rows.discard(f"task::{task_id}")
                 self.notify("TASK PURGED.", severity="warning")
             self.populate_table()
+        except Exception as e:
+            self.notify(f"ERROR: {e}", severity="error")
 
     # ------------------------------------------------------------------
     # ACTIONS — View / Filter
